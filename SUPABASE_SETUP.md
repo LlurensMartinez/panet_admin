@@ -1,6 +1,6 @@
 # Supabase y acceso privado
 
-Guía de configuración de la Fase 1 (acceso privado). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
+Guía de configuración de la Fase 1 (acceso privado y autorización). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
 
 > Los nombres de las opciones del panel de Supabase pueden cambiar ligeramente con el tiempo. Si alguno no coincide, busca el equivalente en *Authentication*.
 
@@ -10,7 +10,11 @@ Guía de configuración de la Fase 1 (acceso privado). Complementa a `DATA_MODEL
 - Inicio de sesión con correo y contraseña en `/login`. **No hay registro público** en la aplicación.
 - Todas las páginas, excepto `/login`, exigen una usuaria **verificada** (`app/middleware/auth.global.js`). Se comprueban los *claims* del JWT validados por Supabase, no solo que exista una cookie.
 - Botón **Cerrar sesión** en la cabecera. Cierra solo la sesión de ese dispositivo.
-- **Pendiente:** crear el proyecto de Supabase, configurar las variables y las políticas RLS (ver más abajo).
+- Proyecto de Supabase creado y variables configuradas en local.
+- **Preparado, pendiente de aplicar en el proyecto remoto:**
+  - Migración `supabase/migrations/20261028095000_profiles_authorization.sql`. Crea `public.profiles` (lista de cuentas autorizadas), `private.is_authorized()` y la RLS de `profiles`.
+  - Script de comprobación `supabase/tests/authorization_checks.sql`.
+- Secciones 5 a 8 de esta guía.
 
 Sin `NUXT_PUBLIC_SUPABASE_URL` y `NUXT_PUBLIC_SUPABASE_KEY`, la aplicación compila, pero todas las páginas muestran el error 500 *«Falta configurar la conexión con Supabase»*. Es intencionado: no hay acceso de prueba ni autenticación simulada.
 
@@ -64,18 +68,179 @@ Copia `.env.example` como `.env` y rellena:
 
 Con la autenticación por correo y contraseña no hace falta configurar *Redirect URLs*. En **Authentication → URL Configuration**, pon en *Site URL* la URL de producción. Las *Redirect URLs* solo harán falta si más adelante se añade la recuperación de contraseña.
 
-## 5. Controles en servidor y base de datos (fase posterior, obligatoria)
+## 5. Aplicar la migración de autorización
 
-La protección de páginas en Nuxt **no protege los datos**. Cualquiera con la URL y la clave publicable puede llamar directamente a la API de Supabase. La seguridad real dependerá de:
+Archivo: `supabase/migrations/20261028095000_profiles_authorization.sql`. Solo crea objetos nuevos y no borra ni modifica datos. Se aplica **una sola vez** por proyecto.
 
-1. **RLS activado en todas las tablas** del esquema `public`, sin políticas para el rol `anon`.
-2. **Políticas limitadas a la identidad autorizada**, no a cualquier usuario `authenticated` (ver `CLAUDE.md`). Hay que decidir la opción (decisión pendiente n.º 3 de `DATA_MODEL.md`):
-   - **Opción A (recomendada):** usar la tabla `profiles` como lista de personas autorizadas. La fila de la encargada se crea a mano con su UUID. Se añade una función `security definer` que compruebe `exists (select 1 from public.profiles where id = auth.uid())`, y todas las políticas usan `to authenticated using (...) with check (...)` con esa función. `profiles` no admite inserciones ni cambios desde el cliente.
-   - **Opción B:** comparar `auth.uid()` con el UUID fijo de la encargada en cada política. Es más simple, pero obliga a cambiar todas las políticas si cambia la cuenta.
-3. **Pruebas explícitas antes de desplegar**:
-   - Sin sesión no se puede leer ni escribir en ninguna tabla.
-   - Una segunda cuenta de prueba creada a mano, que exista pero no esté autorizada, tampoco puede. Después hay que borrarla.
-4. **Rutas de servidor de Nuxt** (si se crean en `server/api`): usar `serverSupabaseClient(event)`, que actúa con el JWT de la usuaria y respeta RLS, y devolver 401 si `serverSupabaseUser(event)` no devuelve usuaria. No usar `serverSupabaseServiceRole`.
+Crea lo siguiente:
+- **Esquema `private`:** no se expone en la Data API y solo el propietario puede crear objetos en él.
+- **Tabla `public.profiles`:** `id` es el UUID de `auth.users`, con `on delete cascade`, y no guarda credenciales.
+- **Función `private.is_authorized()`:**
+  - Es `SECURITY DEFINER` y tiene `search_path` vacío.
+  - Solo pueden ejecutarla las sesiones autenticadas (`authenticated`).
+- **RLS de `profiles`:** cada cuenta solo puede leer su propia fila. Ningún cliente puede insertar, modificar ni borrar filas.
+- **Trigger** que mantiene `updated_at`.
+
+### Opción A — SQL Editor del panel (recomendada por ahora)
+
+1. Abre **SQL Editor → New query**.
+2. Escribe `begin;` en la primera línea.
+3. Pega debajo el contenido completo del archivo de migración.
+4. Escribe `commit;` en la última línea.
+5. Ejecuta (*Run*). Si aparece algún error, nada se habrá aplicado: la transacción se revierte entera. Copia el error y revisa antes de repetir.
+6. Comprueba el resultado con esta consulta. Deben aparecer `profiles` con `rls = true`, la política `profiles_select_own` y las funciones `is_authorized` y `set_updated_at`:
+
+   ```sql
+   select c.relname, c.relrowsecurity as rls
+   from pg_class c where c.oid = 'public.profiles'::regclass;
+
+   select policyname, cmd, roles from pg_policies where tablename = 'profiles';
+
+   select proname, prosecdef as security_definer, proconfig
+   from pg_proc where pronamespace = 'private'::regnamespace;
+   ```
+
+Si después empiezas a usar la CLI de Supabase, marca esta migración como ya aplicada para que `db push` no intente repetirla: `npx supabase migration repair --status applied 20261028095000`.
+
+### Opción B — CLI de Supabase
+
+No se ha añadido la CLI como dependencia del proyecto. Se puede usar con `npx`; pedirá la contraseña de la base de datos:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <ref-del-proyecto>
+npx supabase db push --dry-run   # revisa qué se aplicaría
+npx supabase db push
+```
+
+La CLI ejecuta cada migración dentro de una transacción.
+
+### Comprobar que `private` no está expuesto
+
+En **Project Settings → Data API** (o *API*), la lista **Exposed schemas** no debe incluir `private`. Por defecto solo incluye `public` y `graphql_public`.
+
+## 6. Autorizar la cuenta
+
+Una cuenta solo tiene acceso a los datos si su UUID está en `public.profiles`. Se hace a mano en el **SQL Editor**, que se ejecuta como `postgres`.
+
+1. **Busca el UUID** de la cuenta, en *Authentication → Users* o con:
+
+   ```sql
+   select id, email, created_at from auth.users order by created_at;
+   ```
+
+2. **Añádela** sustituyendo el UUID. `display_name` es opcional.
+
+   ```sql
+   insert into public.profiles (id, display_name)
+   values ('00000000-0000-0000-0000-000000000000', 'Encargada');
+   ```
+
+3. **Comprueba que está autorizada:**
+
+   ```sql
+   -- Cuentas autorizadas
+   select p.id, u.email, p.display_name, p.created_at
+   from public.profiles p
+   join auth.users u on u.id = p.id;
+
+   -- Simula una petición de esa cuenta: debe devolver true.
+   -- No deja cambios: se revierte al final.
+   begin;
+   select set_config('request.jwt.claims',
+     '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}', true);
+   set local role authenticated;
+   select private.is_authorized() as autorizada;
+   rollback;
+   ```
+
+**Retirar una autorización:** `delete from public.profiles where id = '<uuid>';`. Solo borra la autorización, no la cuenta de Supabase Auth. El acceso a los datos protegidos se corta en la siguiente consulta, aunque la sesión siga abierta.
+
+**Cuenta provisional:** si la cuenta con la que se está probando no es la definitiva de la encargada, autorízala solo mientras dure el desarrollo. Cuando exista la cuenta real, añade la nueva y retira la provisional.
+
+## 7. Verificar la seguridad
+
+### 7.1 Comprobaciones SQL (SQL Editor)
+
+Archivo: `supabase/tests/authorization_checks.sql`.
+
+1. **Opcional, pero recomendado:** crea una **segunda cuenta de prueba** en *Authentication → Users* (con *Auto Confirm User*) y **no** la añadas a `profiles`.
+2. Pega el script en el SQL Editor y, en la sección `CONFIGURACIÓN`, sustituye:
+   - `v_authorized`: el UUID de la cuenta autorizada.
+   - `v_unauthorized`: el UUID de la segunda cuenta. Si lo dejas en `null`, se usa un UUID aleatorio.
+3. Ejecuta. Se mostrará una tabla de unas 30 comprobaciones: **todas deben decir `OK`**.
+
+El script no deja cambios. Simula peticiones como `anon` (sin sesión) y como `authenticated` con cada UUID, igual que hace Supabase con el JWT de cada petición. Comprueba lo siguiente:
+- **Configuración:**
+  - RLS activo y una única política.
+  - Privilegios de `anon` y `authenticated`.
+  - `SECURITY DEFINER`, `search_path` y propietario de la función.
+  - Permisos del esquema `private`.
+- **Sin sesión:** no puede leer `profiles`, ejecutar `is_authorized()` ni insertarse.
+- **Cuenta autenticada no autorizada:**
+  - `is_authorized()` devuelve `false` y no ve ninguna fila.
+  - No puede insertarse, modificar ni borrar filas.
+  - Tampoco puede desactivar RLS, borrar o crear políticas, ni reemplazar o crear funciones en `private`.
+- **Cuenta autorizada:**
+  - `is_authorized()` devuelve `true`, ve solo su fila.
+  - No puede modificar ni retirar su propia autorización desde el cliente.
+
+Si una escritura prohibida llegara a funcionar, el script la deshace en el momento y la marca como `FALLO`.
+
+### 7.2 Comprobaciones a través de la API (de extremo a extremo)
+
+Prueban el camino real que usa el navegador: la clave publicable y el JWT van a la API REST de Supabase. Ejecuta desde la carpeta del proyecto. Las contraseñas se piden por teclado para que no queden en el historial.
+
+```bash
+set -a; source .env; set +a
+URL="$NUXT_PUBLIC_SUPABASE_URL"; KEY="$NUXT_PUBLIC_SUPABASE_KEY"
+
+# Obtener el token de una cuenta (repite para cada cuenta que quieras probar)
+token_de() {
+  read -r -s -p "Contraseña de $1: " PW; echo >&2
+  curl -s -X POST "$URL/auth/v1/token?grant_type=password" \
+    -H "apikey: $KEY" -H "Content-Type: application/json" \
+    -d "$(node -e 'console.log(JSON.stringify({email:process.argv[1],password:process.argv[2]}))' "$1" "$PW")" \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).access_token'
+}
+
+# 1. Sin sesión → esperado: HTTP 401, código 42501 (permission denied)
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/profiles?select=*" -H "apikey: $KEY"
+
+# 2. Segunda cuenta (autenticada, NO autorizada)
+T2=$(token_de segunda-cuenta@ejemplo.com)
+#   Lectura → esperado: HTTP 200 y []
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/profiles?select=*" -H "apikey: $KEY" -H "Authorization: Bearer $T2"
+#   Intento de autorizarse a sí misma → esperado: HTTP 403, código 42501
+curl -s -w '\nHTTP %{http_code}\n' -X POST "$URL/rest/v1/profiles" -H "apikey: $KEY" -H "Authorization: Bearer $T2" \
+  -H "Content-Type: application/json" -d '{"id":"<uuid-de-la-segunda-cuenta>"}'
+#   Llamar a la función como RPC → esperado: HTTP 404 (el esquema private no está expuesto)
+curl -s -w '\nHTTP %{http_code}\n' -X POST "$URL/rest/v1/rpc/is_authorized" -H "apikey: $KEY" -H "Authorization: Bearer $T2"
+
+# 3. Cuenta autorizada → esperado: HTTP 200 y solo su propia fila
+T1=$(token_de encargada@ejemplo.com)
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/profiles?select=*" -H "apikey: $KEY" -H "Authorization: Bearer $T1"
+```
+
+Cuando termines las pruebas, puedes eliminar la segunda cuenta desde *Authentication → Users*.
+
+### 7.3 Lo que estas pruebas no cubren todavía
+
+- **Tablas de negocio:** aún no existen. Cada tabla nueva necesita sus propias políticas y comprobaciones (sección 8).
+- **La interfaz:**
+  - Una cuenta autenticada pero **no autorizada** puede iniciar sesión en la app y ver la página privada provisional, aunque no pueda leer ni escribir datos protegidos.
+  - Sería recomendable que la app consulte `profiles` tras el login y muestre «Cuenta sin autorización». Está pendiente de decidir; no se ha implementado en esta fase.
+
+## 8. Regla para las tablas de negocio (fases 2 a 5)
+
+La plantilla SQL está en `DATA_MODEL.md` (*Regla para cada tabla de negocio*). En resumen, cada migración que cree una tabla debe, en el mismo archivo:
+
+1. Activar RLS.
+2. Retirar a `anon` y `authenticated` todos los privilegios que Supabase concede por defecto, incluido `TRUNCATE`, que salta RLS. Después, conceder a `authenticated` solo los necesarios.
+3. Crear políticas `to authenticated` basadas en `(select private.is_authorized())`. Nunca `using (true)` ni políticas abiertas a cualquier autenticado.
+4. Ampliar `supabase/tests/authorization_checks.sql` con las comprobaciones de la tabla.
+
+**Rutas de servidor de Nuxt** (si se crean en `server/api`): usar `serverSupabaseClient(event)`, que actúa con el JWT de la usuaria y respeta RLS. Devolver 401 si `serverSupabaseUser(event)` no devuelve usuaria. No usar `serverSupabaseServiceRole`.
 
 ## Limitaciones conocidas
 
@@ -83,3 +248,8 @@ La protección de páginas en Nuxt **no protege los datos**. Cualquiera con la U
 - En desarrollo las cookies no llevan el atributo `Secure` (`$development` en `nuxt.config.js`), para poder probar desde el móvil por `http://` en la red local. En producción sí lo llevan, así que hace falta HTTPS.
 - No hay recuperación de contraseña desde la aplicación. Por ahora se cambia desde el panel de Supabase (*Authentication → Users*).
 - Si un proyecto usa las claves JWT antiguas (simétricas), cada comprobación de sesión consulta a Supabase. Con las claves asimétricas actuales la verificación es local.
+- **Validación del SQL:**
+  - La migración y el script de comprobación se han probado en un PostgreSQL 16 local que imita los roles y privilegios por defecto de Supabase (`anon`, `authenticated`, `service_role`, `auth.uid()`). Las peticiones de la sección 7.2 se han probado contra PostgREST 13 en local, con tokens de prueba.
+  - **No** se han probado en el proyecto remoto, cuya versión de PostgreSQL y configuración pueden diferir.
+  - La seguridad solo se puede dar por validada después de ejecutar las secciones 7.1 y 7.2 en el proyecto real.
+- **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.
