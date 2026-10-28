@@ -2,7 +2,8 @@
 
 **Estado:**
 - `profiles`: implementada y aplicada en el proyecto de Supabase (Fase 1).
-- `employees` y `overtime_entries`: implementadas en una migración preparada, pendiente de aplicar en el proyecto remoto (Fase 2).
+- `employees` y `overtime_entries`: implementadas y aplicadas en el proyecto de Supabase (Fase 2); falta confirmar la ejecución de `staff_rls_checks.sql` allí.
+- `suppliers`, `orders` y `holidays`: implementadas en la migración `20261028221500_suppliers_orders_holidays.sql`, preparada y **pendiente de aplicar** en el proyecto remoto (Fase 3).
 - Resto de tablas: propuesta inicial; revisar antes de crear sus migraciones.
 
 ## Convenciones
@@ -69,62 +70,66 @@ Los totales semanales/mensuales se calculan a partir de los registros filtrados 
 `employees` y `overtime_entries` están implementadas en `supabase/migrations/20261028125000_employees_overtime.sql`, con sus comprobaciones en `supabase/tests/staff_rls_checks.sql`.
 
 ### `suppliers`
-- `id uuid primary key`
-- `name text not null`
-- `order_weekdays smallint[] not null default '{}'`
-- `delivery_weekdays smallint[] not null default '{}'`
+- `id uuid primary key default gen_random_uuid()`
+- `name text not null`, con `check (name ~ '[^[:space:]]')`
+- `delivery_weekdays smallint[] not null default '{}'`: días habituales de entrega, 1 = lunes … 7 = domingo (ISO 8601). Restricción: una dimensión, sin nulos y con valores de 1 a 7.
+- `order_lead_days smallint not null default 1`, con `check (order_lead_days between 0 and 7)`: antelación por defecto con la que se prepara el pedido (0 = el mismo día).
 - `notes text null`
 - `is_active boolean not null default true`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
-Convención de días: 1=lunes ... 7=domingo. Validar valores en la aplicación o mediante una restricción SQL.
+Decisiones:
+- **Nombre único:** índice único `suppliers_name_unique_idx` sobre una clave normalizada del nombre: `normalize(name, NFC)`, espacios repetidos reducidos a uno y recortados, acentos de las vocales quitados con `translate` (agudos, graves, circunflejos y diéresis, en mayúsculas y minúsculas) y `lower`. No distingue mayúsculas, acentos ni espacios: «Panadería Sol» y «panaderia  sol» son el mismo proveedor. «ñ» y «ç» se consideran letras propias («Peña» y «Pena» son distintos). Incluye a los inactivos (se reactiva el existente en lugar de duplicarlo). Solo usa funciones incluidas en PostgreSQL, sin extensiones, y funciona igual con la configuración regional `C`. La app aplica la misma regla (`getSupplierNameKey` en `app/utils/suppliers.js`) para avisar antes de guardar; con letras fuera de esa lista (por ejemplo «Õ») puede ser algo más estricta que la base de datos, nunca menos.
+- **Días de entrega:** la base de datos garantiza el rango; la app los guarda ordenados y sin repetir. Una lista vacía significa que el proveedor no genera previsiones, aunque admite pedidos manuales.
+- **Una sola antelación por proveedor** (decisión aprobada para el MVP). Distintas antelaciones según el día de entrega podrán incorporarse en una fase futura. Mientras tanto, cada pedido puede tener su propia fecha de preparación.
+- **No se borran:** los clientes no tienen el privilegio `DELETE`. Se desactivan con `is_active = false`.
+- **Reglas que aplica solo la aplicación:** nombre de 80 caracteres como máximo y notas de 1000; un proveedor inactivo no genera previsiones ni admite pedidos nuevos.
 
-### `supplier_products`
-- `id uuid primary key`
-- `supplier_id uuid not null references suppliers(id)`
-- `name text not null`
-- `unit text not null`
-- `usual_quantity numeric(10,2) not null default 0 check (usual_quantity >= 0)`
-- `is_active boolean not null default true`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+### Catálogo de productos y líneas de pedido (descartados)
 
-La unidad se almacena como texto sencillo para admitir unidades propias de la tienda. No hace falta construir un sistema complejo de unidades en el MVP.
+Las tablas `supplier_products` y `order_lines` de la propuesta inicial **no se crean**: el MVP no tiene catálogo de productos, unidades, cantidades habituales ni precios (ver `SPEC.md`, 3.3). El contenido de cada pedido se anota en `orders.notes`.
 
 ### `orders`
-- `id uuid primary key`
-- `supplier_id uuid not null references suppliers(id)`
-- `order_date date not null`
-- `status text not null check (status in ('pending','ordered'))`
-- `ordered_at timestamptz null`
-- `notes text null`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+- `id uuid primary key default gen_random_uuid()`
+- `supplier_id uuid not null references suppliers(id) on delete restrict`
+- `scheduled_delivery_date date null`: entrega prevista por el calendario de la que procede el pedido. `null` en los pedidos creados a mano.
+- `delivery_date date not null`
+- `prepare_date date not null`, con `check (prepare_date <= delivery_date)`
+- `status text not null default 'pending'`, con `check (status in ('pending', 'prepared', 'skipped'))`
+- `prepared_at timestamptz null`, con `check ((status = 'prepared') = (prepared_at is not null))`
+- `notes text null`: contenido del pedido y observaciones, en texto libre.
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
+- Únicos: `orders_supplier_delivery_unique (supplier_id, delivery_date)` y `orders_supplier_scheduled_unique (supplier_id, scheduled_delivery_date)`.
 
-Evitar duplicar accidentalmente un pedido del mismo proveedor para la misma fecha; definir una restricción única o una operación idempotente según el flujo de creación.
-
-### `order_lines`
-- `id uuid primary key`
-- `order_id uuid not null references orders(id) on delete cascade`
-- `supplier_product_id uuid null references supplier_products(id) on delete set null`
-- `product_name_snapshot text not null`
-- `unit_snapshot text not null`
-- `usual_quantity_snapshot numeric(10,2) not null`
-- `ordered_quantity numeric(10,2) not null`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
-
-Los campos `*_snapshot` preservan el nombre, unidad y cantidad habitual tal como estaban cuando se creó el pedido. `ordered_quantity` conserva la cantidad concreta pedida. La referencia al producto puede quedar nula si se desactiva o elimina el producto, sin perder el historial.
+Decisiones:
+- **Agenda calculada, no guardada.** Las previsiones se calculan en la app a partir de `suppliers` (días de entrega y antelación) para los próximos 14 días y los 7 anteriores. Solo se guarda una fila cuando la encargada actúa sobre una previsión (marcarla como preparada o «no se pide», corregir fechas, escribir notas) o crea un pedido a mano. Abrir la app, recargarla o cambiar de día no escribe nada.
+- **Sin duplicados.** Como mucho un pedido por proveedor y fecha de entrega, y cada previsión se convierte como mucho en un pedido (dos dispositivos que actúan a la vez sobre la misma previsión: el segundo recibe `23505`, la API responde 409, y la app recarga y avisa). La app usa `insert` y no `upsert`, para no sobrescribir cambios hechos desde otro dispositivo.
+- **Pedido movido.** `scheduled_delivery_date` no cambia al corregir las fechas, así la previsión original no vuelve a aparecer. Una previsión se oculta si ya existe un pedido del mismo proveedor con esa fecha como `scheduled_delivery_date` o como `delivery_date`.
+- **Estados:** `pending` (pendiente), `prepared` (preparado) y `skipped` (no se pide: descarta una previsión, por ejemplo por un festivo; no cuenta como pendiente ni atrasado). Desde cualquier estado se puede volver a `pending`.
+- **`prepared_at`** lo mantiene el trigger `orders_set_prepared_at` (función `private.set_order_prepared_at()`) con la hora del servidor: se fija al pasar a `prepared`, se conserva mientras siga preparado y se vacía en cualquier otro estado. Lo que envíe el cliente se ignora.
+- **Columnas protegidas.** `authenticated` solo puede modificar `delivery_date`, `prepare_date`, `status` y `notes` (privilegio `UPDATE` por columnas). El proveedor y la entrega prevista de origen no cambian una vez creado el pedido.
+- **Eliminación.** Solo pedidos pendientes (política `orders_delete_pending_authorized`). Un `DELETE` sobre un pedido preparado o descartado no da error, pero no afecta a ninguna fila. Para eliminarlo habría que volver a ponerlo como pendiente.
+- **`on delete restrict`:** no se puede borrar un proveedor con pedidos, ni siquiera desde el panel.
+- **Reglas que aplica solo la aplicación:** notas de 1000 caracteres como máximo; no se crean pedidos para proveedores inactivos.
 
 ### `holidays`
-- `id uuid primary key`
-- `holiday_date date not null`
-- `name text not null`
+- `id uuid primary key default gen_random_uuid()`
+- `holiday_date date not null`, único (`holidays_holiday_date_unique`)
+- `name text not null`, con `check (name ~ '[^[:space:]]')`
+- `scope text not null`, con `check (scope in ('national', 'regional', 'local'))`: nacional, autonómico o local.
 - `notes text null`
-- `created_at timestamptz not null`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
-Para MVP, los festivos se introducen manualmente.
+Decisiones:
+- **Introducción manual**, sin API externa: son pocas fechas al año y los festivos locales dependen del municipio.
+- **Una fila por fecha:** basta para avisar. Si un festivo es a la vez de dos ámbitos, se elige uno y se anota en `notes`.
+- **Se pueden corregir y eliminar:** no tienen historial que conservar.
+- **Solo avisos.** Un festivo en la fecha de entrega genera un aviso que recomienda confirmar la entrega con el proveedor; nunca mueve ni cancela pedidos.
+
+`suppliers`, `orders` y `holidays` están implementadas en `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con sus comprobaciones en `supabase/tests/orders_rls_checks.sql`.
 
 ### `employee_absences`
 - `id uuid primary key`
@@ -180,6 +185,14 @@ Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar auten
 | `employees` | ninguno | `SELECT`, `INSERT`, `UPDATE` |
 | `overtime_entries` | ninguno | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 
+### Permisos de las tablas de la Fase 3
+
+| Tabla | `anon` | `authenticated` (si `private.is_authorized()`) |
+| --- | --- | --- |
+| `suppliers` | ninguno | `SELECT`, `INSERT`, `UPDATE` |
+| `orders` | ninguno | `SELECT`, `INSERT`; `UPDATE` solo de `delivery_date`, `prepare_date`, `status` y `notes`; `DELETE` solo de pedidos con `status = 'pending'` |
+| `holidays` | ninguno | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+
 Ninguno de los dos roles tiene `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Una cuenta autenticada pero no autorizada tiene los privilegios de tabla, pero las políticas no le dejan ver ni crear filas. Sus `UPDATE` y `DELETE` no afectan a ninguna fila (la API responde `200` con una lista vacía).
 
 ### Regla para cada tabla de negocio
@@ -201,7 +214,7 @@ create policy "<tabla>_update_authorized" on public.<tabla>
   for update to authenticated
   using ((select private.is_authorized()))
   with check ((select private.is_authorized()));
--- DELETE solo si la tabla permite borrado físico (ver decisión pendiente 4);
+-- DELETE solo si la tabla permite borrado físico (ver decisión 4 de «Decisiones pendientes»);
 -- en las entidades con historial se usa is_active. Si se permite, se añade
 -- `delete` al grant y una política:
 -- create policy "<tabla>_delete_authorized" on public.<tabla>
@@ -213,7 +226,8 @@ Si la tabla usa `updated_at`, se añade también el trigger con `private.set_upd
 **Pruebas SQL:** cada migración tiene su propio script de comprobaciones en `supabase/tests/`, con el mismo patrón que `authorization_checks.sql`:
 - `authorization_checks.sql`: `profiles` y `private.is_authorized()` (Fase 1). No se amplía con tablas nuevas, para que su resultado verificado no cambie.
 - `staff_rls_checks.sql`: `employees` y `overtime_entries` (Fase 2).
-- Las fases siguientes añaden su propio archivo, por ejemplo `suppliers_rls_checks.sql`.
+- `orders_rls_checks.sql`: `suppliers`, `orders` y `holidays` (Fase 3).
+- Las fases siguientes añaden su propio archivo.
 
 Cada script comprueba la configuración (RLS, políticas, privilegios, restricciones) y simula peticiones sin sesión, con una sesión no autorizada y con la cuenta autorizada. Si necesita datos, los crea y los deshace al terminar. No deja cambios en la base de datos. Los UUID reales se escriben solo en la copia que se pega en el SQL Editor, nunca en el archivo versionado.
 
@@ -222,15 +236,14 @@ Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.rol
 ## Índices recomendados
 
 - `overtime_entries(employee_id, work_date)`: creado en la migración de la Fase 2 (`overtime_entries_employee_id_work_date_idx`).
-- `orders(order_date, status)`
-- `orders(supplier_id, order_date)`
-- `order_lines(order_id)`
-- `supplier_products(supplier_id, is_active)`
+- `orders(prepare_date)`: agenda. Creado en la migración de la Fase 3 (`orders_prepare_date_idx`).
+- `orders(delivery_date)`: historial. Creado en la migración de la Fase 3 (`orders_delivery_date_idx`).
+- `orders(supplier_id, delivery_date)`: lo cubre la restricción única `orders_supplier_delivery_unique`.
 - `employee_absences(employee_id, start_date, end_date)`
 
 ## Decisiones pendientes antes de migrar
 
 1. Confirmar cómo se representará el horario habitual: uno o varios intervalos por día.
-2. Confirmar si se pueden registrar dos pedidos del mismo proveedor en una fecha, o si debe haber solo uno.
+2. ~~Confirmar si se pueden registrar dos pedidos del mismo proveedor en una fecha.~~ **Decidido:** como mucho uno por proveedor y fecha de entrega.
 3. ~~Elegir la forma de restringir RLS al usuario autorizado.~~ **Decidido:** opción A, tabla `profiles` y función `private.is_authorized()` (ver *Modelo de autorización*).
-4. Decidir si los productos/proveedores se desactivan siempre o si se permite borrarlos cuando no tienen historial. (Para la Fase 2 ya está decidido: las trabajadoras solo se desactivan y los registros de horas extra sí se pueden eliminar.)
+4. ~~Decidir si los proveedores se desactivan siempre o si se permite borrarlos.~~ **Decidido:** los proveedores solo se desactivan; se pueden eliminar los pedidos pendientes y los festivos. (Fase 2: las trabajadoras solo se desactivan y los registros de horas extra sí se pueden eliminar.)

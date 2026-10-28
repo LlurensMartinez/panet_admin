@@ -48,34 +48,41 @@
 
 **Aceptación:** los totales coinciden con pruebas manuales y la duración se guarda en minutos enteros.
 
-## Fase 3 — Proveedores y catálogo
-- Crear tablas `suppliers` y `supplier_products`, con RLS y políticas basadas en `private.is_authorized()`.
-- Implementar altas, edición y desactivación.
-- Configurar días de pedido y entrega.
-- Configurar unidades y cantidades habituales.
+## Fase 3 — Proveedores, pedidos y festivos
+Sustituye a las antiguas fases 3 (proveedores y catálogo) y 4 (pedidos e historial) e incluye los festivos, que estaban en la Fase 5. Sin catálogo de productos ni líneas de pedido: el contenido de cada pedido se anota en sus notas (ver `SPEC.md`, 3.3 y 3.4). Se implementa en tres bloques; no se pasa al siguiente si falla alguna prueba del anterior.
 
-**Aceptación:** la encargada puede gestionar el catálogo desde móvil y ordenador.
+**Bloque 1 — Base de datos**
+- Crear `suppliers`, `orders` y `holidays`, con RLS y políticas basadas en `private.is_authorized()`. *(Hecho en local: `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con comprobaciones en `supabase/tests/orders_rls_checks.sql` (117 filas: 116 `OK` + 1 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 10. Validado en un PostgreSQL 16 local que imita Supabase y a través de PostgREST 13 en local. **Pendiente:** aplicar la migración y ejecutar las comprobaciones en el proyecto de Supabase real.)*
 
-## Fase 4 — Pedidos e historial
-- Crear tablas `orders` y `order_lines`, con RLS y políticas basadas en `private.is_authorized()`.
-- Mostrar proveedores a los que corresponde pedir en la fecha actual.
-- Crear pedido con líneas basadas en los productos activos y cantidades habituales.
-- Permitir modificar cantidades del pedido sin modificar valores habituales.
-- Marcar pedido como realizado.
-- Consultar historial.
-- Evitar duplicados accidentales para proveedor/fecha.
+**Bloque 2 — Proveedores y festivos** *(hecho en local)*
+- Subpáginas `/pedidos/proveedores` y `/pedidos/festivos`, y entrada «Pedidos» en la navegación. *(Hecho. `/pedidos` muestra por ahora un aviso de que la agenda llegará en el Bloque 3 y enlaza a la configuración.)*
+- Altas, edición y desactivación de proveedores: nombre, días de entrega, antelación (0 a 7 días) y notas; aviso de nombre duplicado (sin distinguir mayúsculas, acentos ni espacios, igual que la base de datos). *(Hecho: búsqueda, filtro por estado, resumen del calendario de entrega y preparación en el formulario, reactivación desde «Inactivos». Sin borrado.)*
+- Altas, edición y eliminación de festivos con ámbito nacional, autonómico o local. *(Hecho: vista por años agrupada por meses, aviso de fecha repetida, confirmación al eliminar.)*
+- Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con la migración real). **Pendiente:** aplicar la migración y probar las pantallas contra el proyecto de Supabase real.
 
-**Aceptación:** un pedido anterior conserva sus cantidades y un nuevo día de pedido genera un nuevo pedido.
+**Bloque 3 — Agenda, historial y avisos** *(pendiente)*
+- Agenda calculada (atrasados de los últimos 7 días, hoy y próximos 14 días), sin crear filas al abrir la app.
+- Guardar un pedido solo al actuar sobre él; gestionar los conflictos de duplicado (409) recargando y avisando.
+- Estados pendiente, preparado y «no se pide»; corregir fechas y notas; eliminar solo pedidos pendientes; pedidos manuales.
+- Avisos de festivo en la fecha de entrega que recomiendan confirmarla, sin mover ni cancelar pedidos.
+- Historial por proveedor y fechas.
 
-## Fase 5 — Horarios, ausencias y festivos
+**Aceptación:** la agenda muestra los pedidos que toca preparar según el calendario de cada proveedor sin duplicarlos al recargar o cambiar de día; los estados y las fechas corregidas se conservan; los proveedores desactivados conservan su historial; los avisos de festivos no afirman que el proveedor no vaya a entregar.
+
+**Para una fase futura:** antelaciones distintas según el día de entrega (hoy, una por proveedor; cada pedido puede corregir su fecha de preparación).
+
+## Fase 4 — (integrada en la Fase 3)
+Los pedidos y su historial forman parte de la Fase 3. Se mantiene la numeración del resto de fases.
+
+## Fase 5 — Horarios y ausencias
 - Confirmar el modelo de horarios habituales antes de implementarlo.
 - Implementar consulta de horarios.
 - Implementar vacaciones y ausencias.
-- Implementar gestión manual de festivos.
-- Las tablas `employee_regular_schedules`, `employee_absences` y `holidays` se crean con RLS y políticas basadas en `private.is_authorized()`.
-- Mostrar advertencias preventivas sobre entregas previstas en festivos.
+- Las tablas `employee_regular_schedules` y `employee_absences` se crean con RLS y políticas basadas en `private.is_authorized()`.
 
-**Aceptación:** se pueden consultar horarios y ausencias; los avisos de festivos no afirman que el proveedor no vaya a entregar.
+Los festivos y sus avisos se han trasladado a la Fase 3.
+
+**Aceptación:** se pueden consultar horarios y ausencias.
 
 ## Fase 6 — Dashboard y pulido responsive
 - Mostrar pedidos de hoy, pedidos pendientes, próximas entregas y resumen de horas extra.
