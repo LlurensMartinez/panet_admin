@@ -1,23 +1,25 @@
+<script setup>
+useHead({ title: 'Inicio · Panet Admin' })
+
+const user = useSupabaseUser()
+</script>
+
 <template>
-  <UContainer class="flex min-h-dvh items-center justify-center py-8">
-    <UCard class="w-full max-w-md">
-      <template #header>
-        <h1 class="text-2xl font-semibold text-highlighted">
-          Panet Admin
-        </h1>
-      </template>
+  <UCard class="mx-auto max-w-md">
+    <template #header>
+      <h1 class="text-xl font-semibold text-highlighted">
+        Área privada
+      </h1>
+    </template>
 
-      <p class="text-muted">
-        La base de la aplicación está preparada. Los módulos se irán incorporando en las próximas fases.
+    <div class="space-y-3">
+      <p>
+        Has iniciado sesión como
+        <strong class="break-all">{{ user?.email }}</strong>.
       </p>
-
-      <template #footer>
-        <UBadge
-          color="neutral"
-          variant="subtle"
-          label="Fase 0 · Preparación"
-        />
-      </template>
-    </UCard>
-  </UContainer>
+      <p class="text-sm text-muted">
+        Página provisional para comprobar que el acceso está protegido. Los módulos se añadirán en las próximas fases.
+      </p>
+    </div>
+  </UCard>
 </template>
