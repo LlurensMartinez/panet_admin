@@ -44,6 +44,9 @@ app/
   pages/login.vue            # inicio de sesión (sin registro)
   pages/index.vue            # página privada provisional
   utils/                     # mensajes de error de acceso y redirección segura
+supabase/
+  migrations/                # migraciones SQL versionadas (se aplican a mano: ver SUPABASE_SETUP.md)
+  tests/                     # comprobaciones SQL de autorización y RLS
 nuxt.config.js
 eslint.config.mjs
 ```

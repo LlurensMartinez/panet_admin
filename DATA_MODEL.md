@@ -14,11 +14,15 @@
 ## Tablas propuestas
 
 ### `profiles`
-Perfil de la única usuaria autorizada.
-- `id uuid primary key references auth.users(id)`
-- `display_name text`
-- `created_at timestamptz`
-- `updated_at timestamptz`
+Lista explícita de cuentas autorizadas: una fila por cada cuenta de Supabase Auth que puede usar la aplicación (decisión tomada: opción A, ver *Seguridad (RLS)*). En el MVP habrá una sola fila, la de la encargada.
+- `id uuid primary key references auth.users(id) on delete cascade`
+- `display_name text null`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
+
+No guarda contraseñas, correos ni secretos: las credenciales las gestiona Supabase Auth. Las filas se añaden y se retiran a mano desde el panel de Supabase; los clientes solo pueden leer su propia fila.
+
+Implementada en `supabase/migrations/20261028095000_profiles_authorization.sql`.
 
 No se crea una tabla de cuentas para trabajadoras.
 
