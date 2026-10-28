@@ -1,6 +1,6 @@
 # Gestión de tienda — Especificación funcional
 
-**Versión:** 0.1  
+**Versión:** 0.2 (pedidos sin catálogo de productos)  
 **Estado:** Borrador para validar antes de implementar  
 **Objetivo:** Aplicación web privada para que la encargada gestione los pedidos a proveedores y aspectos concretos del personal de una única tienda.
 
@@ -29,8 +29,8 @@ Principios:
 ### 3.1 Inicio / dashboard
 
 Mostrar un resumen práctico:
-- Proveedores a los que toca pedir hoy.
-- Pedidos pendientes y realizados.
+- Pedidos que toca preparar hoy.
+- Pedidos pendientes y preparados.
 - Próximas entregas previstas.
 - Resumen de horas extra del periodo actual.
 - Avisos relevantes, incluidos posibles conflictos con festivos.
@@ -40,45 +40,48 @@ Evitar estadísticas que no ayuden a tomar una acción.
 ### 3.2 Proveedores
 
 Cada proveedor tendrá:
-- Nombre (obligatorio).
-- Días habituales de pedido.
-- Días previstos de entrega.
+- Nombre (obligatorio). No puede haber dos proveedores con el mismo nombre, sin distinguir mayúsculas, acentos ni espacios repetidos.
+- Días habituales de entrega (de lunes a domingo; puede no tener ninguno).
+- Antelación: cuántos días antes de la entrega se prepara el pedido, de 0 (el mismo día) a 7. Por defecto, 1.
 - Notas opcionales.
 - Estado activo/inactivo.
 
 No se requieren NIF, datos fiscales ni dirección.
 
-Los días de pedido y los días de entrega son calendarios diferentes.
+Los proveedores no se eliminan: se desactivan. Un proveedor inactivo no genera previsiones ni admite pedidos nuevos, pero conserva su historial.
 
-### 3.3 Productos por proveedor
+La antelación es única por proveedor. Si en el futuro hiciera falta una antelación distinta según el día de entrega (por ejemplo, pedir el viernes para el lunes y el martes para el jueves), se podrá incorporar en una fase posterior. Mientras tanto, la fecha de preparación de cada pedido se puede corregir individualmente.
 
-Cada producto estará asociado a un proveedor y tendrá:
-- Nombre.
-- Unidad de medida (por ejemplo: unidad, caja, paquete, kg).
-- Cantidad habitual.
-- Estado activo/inactivo.
+### 3.3 Catálogo de productos (fuera del MVP)
 
-La cantidad habitual sirve como valor inicial al crear un pedido, pero cambiar la cantidad de un pedido concreto nunca debe modificarla automáticamente.
+No hay catálogo de productos, unidades, cantidades habituales ni precios. El contenido de cada pedido se anota en sus notas, en texto libre. Un catálogo podría estudiarse en una fase futura si la encargada lo necesita.
 
 ### 3.4 Pedidos
 
-- La aplicación calcula qué proveedores corresponde pedir según el día de la semana y la configuración activa.
-- Cada día debe poder generarse un pedido nuevo para cada proveedor correspondiente, aunque se haya realizado el pedido de la semana anterior.
-- El pedido guarda una copia de las líneas y cantidades solicitadas para conservar el historial aunque después se cambie el catálogo.
-- Estados del MVP: `pending` (pendiente) y `ordered` (realizado).
-- La encargada puede editar las cantidades del pedido y marcarlo como realizado.
-- La fecha y hora de realización se registran cuando se marca como realizado.
-- La encargada puede consultar pedidos anteriores por fecha y proveedor.
+- **Agenda calculada.** La aplicación calcula las entregas previstas de cada proveedor activo a partir de sus días de entrega, y la fecha de preparación restando la antelación. Esas previsiones no se guardan en la base de datos.
+- **Pedido guardado solo al actuar.** Un pedido se guarda cuando la encargada actúa sobre una previsión (marcarla como preparada o como «no se pide», corregir fechas o escribir notas) o crea un pedido a mano. Abrir la aplicación, recargarla o cambiar de día no crea pedidos.
+- **Sin duplicados.** Como mucho un pedido por proveedor y fecha de entrega, y cada previsión se convierte como mucho en un pedido, aunque se actúe desde dos dispositivos a la vez. Lo garantiza la base de datos; la aplicación avisa y recarga si choca.
+- **Datos del pedido:** proveedor, fecha de entrega, fecha de preparación, estado y notas en texto libre (contenido y observaciones). Sin líneas de productos ni cantidades.
+- **Estados:**
+  - `pending` (pendiente).
+  - `prepared` (preparado): se registra la fecha y hora del servidor en que se marcó.
+  - `skipped` (no se pide): descarta una previsión para la que no se hará pedido, por ejemplo por un festivo. No aparece como pendiente ni como atrasado.
+  - Desde cualquier estado se puede volver a pendiente.
+- **Correcciones.** La encargada puede corregir las fechas de entrega y de preparación de un pedido concreto (la preparación no puede ser posterior a la entrega) sin cambiar la configuración del proveedor. El proveedor de un pedido existente no se cambia.
+- **Eliminación.** Solo se pueden eliminar pedidos pendientes, por ejemplo uno creado por error. Los preparados y los descartados se conservan en el historial.
+- **Agenda:** pedidos atrasados (pendientes con fecha de preparación en los 7 días anteriores), los de hoy y los de los próximos 14 días.
+- **Historial:** consulta de pedidos anteriores por proveedor y fechas.
 
 No se envían pedidos automáticamente al proveedor: la aplicación registra y organiza el trabajo.
 
 ### 3.5 Entregas y festivos
 
 - Mostrar las entregas previstas a partir de los días configurados para cada proveedor.
-- Permitir configurar los festivos relevantes para la tienda.
-- Si una entrega prevista coincide con un festivo configurado, mostrar un aviso preventivo.
-- No asumir que el proveedor no entregará. El aviso debe recomendar comprobarlo.
-- La aplicación no necesita integrar automáticamente un calendario oficial de festivos en la primera versión; la configuración manual es suficiente para el MVP.
+- Permitir configurar los festivos relevantes para la tienda: fecha, nombre, ámbito (nacional, autonómico o local) y notas opcionales. Uno por fecha. Se pueden corregir y eliminar.
+- Si la fecha de entrega de un pedido o de una previsión coincide con un festivo configurado, mostrar un aviso preventivo.
+- No asumir que el proveedor no entregará. El aviso debe recomendar confirmar la entrega con el proveedor.
+- Nunca mover ni cancelar pedidos automáticamente. Si el proveedor confirma un cambio, la encargada corrige la fecha o marca el pedido como «no se pide».
+- La aplicación no integra un calendario oficial de festivos ni una API externa en la primera versión; la configuración manual es suficiente para el MVP.
 
 ### 3.6 Trabajadoras
 
@@ -151,6 +154,7 @@ Los cambios guardados en un dispositivo deben estar disponibles en el otro tras 
 - Cuentas para trabajadoras o responsable de zona.
 - Nóminas, pagos o compensaciones.
 - Facturación, contabilidad, ventas, clientes o inventario/stock.
+- Catálogo de productos, cantidades habituales, líneas de pedido y precios.
 - Integración automática con proveedores.
 - Lectura de fotografías o IA.
 - Aplicación nativa para iOS/Android.
@@ -160,11 +164,11 @@ Los cambios guardados en un dispositivo deben estar disponibles en el otro tras 
 ## 6. Criterios de aceptación
 
 1. La encargada puede iniciar sesión y acceder de forma privada.
-2. Puede crear, editar y desactivar proveedores y productos.
-3. Los proveedores a los que toca pedir aparecen según su calendario.
-4. Cada jornada de pedido permite crear un pedido nuevo.
-5. Modificar una cantidad de pedido no cambia la cantidad habitual.
-6. El historial conserva las cantidades pedidas en su momento.
+2. Puede crear, editar y desactivar proveedores, con sus días de entrega y antelación.
+3. Los pedidos que toca preparar aparecen en la agenda según el calendario de cada proveedor, sin crear pedidos duplicados al recargar o cambiar de día.
+4. Puede marcar cada pedido como pendiente, preparado o «no se pide», y corregir sus fechas sin cambiar la configuración del proveedor.
+5. Las entregas que coinciden con un festivo configurado muestran un aviso que recomienda confirmarlas, sin moverlas ni cancelarlas.
+6. El historial conserva los pedidos preparados y descartados, también los de proveedores desactivados.
 7. La encargada puede crear y desactivar fichas de trabajadoras sin perder el historial.
 8. Puede registrar horas extra como horas/minutos y corregirlas.
 9. Los totales semanales y mensuales son correctos y se muestran por trabajadora y para toda la tienda.

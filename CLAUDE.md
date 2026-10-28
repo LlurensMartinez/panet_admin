@@ -23,14 +23,16 @@ Antes de instalar paquetes o asumir APIs, comprueba las versiones y patrones exi
 - Una sola tienda.
 - Solo la encargada inicia sesión en el MVP.
 - Las trabajadoras no tienen cuentas.
-- No añadir IA, nóminas, pagos, contabilidad, ventas, clientes, inventario ni funciones multi-tienda.
+- No añadir IA, nóminas, pagos, contabilidad, ventas, clientes, inventario, catálogo de productos, precios ni funciones multi-tienda.
 - La prioridad funcional es controlar pedidos y personal, especialmente el registro y resumen de horas extra.
 - Diseñar primero para móvil y adaptar a ordenador.
 - Las horas extra se introducen manualmente como horas/minutos y se almacenan como minutos enteros.
 - Los totales semanales usan lunes-domingo y los mensuales el mes natural.
-- Cambiar una cantidad de pedido no modifica la cantidad habitual del producto.
-- Los pedidos históricos conservan una copia de sus líneas y cantidades.
-- Los festivos generan advertencias preventivas, no afirmaciones sobre la política real de entrega del proveedor.
+- Los pedidos no tienen líneas de productos ni cantidades: el contenido se anota en las notas del pedido, en texto libre.
+- La agenda de pedidos se calcula a partir de los días de entrega y la antelación de cada proveedor. Solo se guarda un pedido cuando la encargada actúa sobre él; no se crean filas automáticamente al abrir la app.
+- Cambiar las fechas de un pedido concreto no modifica la configuración del proveedor.
+- Los pedidos preparados y los marcados como «no se pide» se conservan en el historial.
+- Los festivos generan advertencias preventivas, no afirmaciones sobre la política real de entrega del proveedor, y nunca mueven ni cancelan pedidos automáticamente.
 
 ## Seguridad
 - Nunca exponer secretos ni la clave `service_role` en el cliente.
