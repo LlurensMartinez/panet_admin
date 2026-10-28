@@ -2,11 +2,26 @@
 -- Panet Admin · Comprobaciones de autorización y RLS (tabla `profiles`)
 -- =============================================================================
 --
--- Uso: SQL Editor de Supabase (rol postgres) o `psql`, DESPUÉS de aplicar la
--- migración 20261028095000_profiles_authorization.sql y de autorizar la cuenta.
--- Ver SUPABASE_SETUP.md, sección «Verificar la seguridad».
+-- Uso: SQL Editor de Supabase o `psql`, DESPUÉS de aplicar la migración
+-- 20261028095000_profiles_authorization.sql y de autorizar la cuenta.
+-- Ver SUPABASE_SETUP.md, sección 7.1.
 --
--- Antes de ejecutar, sustituye los valores de la sección CONFIGURACIÓN.
+-- Antes de ejecutar:
+--   1. En el SQL Editor, el selector «Role» debe estar en `postgres` (sin
+--      suplantar a ninguna usuaria). El propio script cambia de rol para
+--      simular cada caso; si se lanza ya con otro rol, falla o da resultados
+--      engañosos.
+--   2. Sustituye los valores de la sección CONFIGURACIÓN.
+--   3. Ejecuta el script entero de una vez: la tabla de resultados es lo que
+--      devuelve la última sentencia.
+--
+-- Aviso de «operaciones destructivas»: el SQL Editor puede advertir de que el
+-- script contiene DELETE, DROP, TRUNCATE o ALTER. Son:
+--   - intentos de escritura que se ejecutan con los roles `anon` y
+--     `authenticated` y que DEBEN fallar por falta de permisos; si alguno
+--     funcionara, se deshace al momento y se marca como FALLO;
+--   - un TRUNCATE de la tabla temporal de resultados de este propio script.
+-- Ninguna de ellas modifica tablas, políticas ni funciones reales.
 --
 -- No deja cambios en la base de datos:
 --   - simula peticiones como `anon` y `authenticated` cambiando de rol dentro

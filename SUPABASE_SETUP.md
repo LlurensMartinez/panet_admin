@@ -217,10 +217,19 @@ Haz esta sección justo después de la 5. Mientras la cuenta no esté en `profil
 Archivo: `supabase/tests/authorization_checks.sql`.
 
 1. **Opcional, pero recomendado:** crea una **segunda cuenta de prueba** en *Authentication → Users* (con *Auto Confirm User*) y **no** la añadas a `profiles`.
-2. Pega el script en el SQL Editor y, en la sección `CONFIGURACIÓN`, sustituye:
+2. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en **`postgres`**. El script cambia de rol por sí mismo para simular cada caso.
+3. Pega el script **completo** y, en la sección `CONFIGURACIÓN`, sustituye:
    - `v_authorized`: el UUID de la cuenta autorizada.
    - `v_unauthorized`: el UUID de la segunda cuenta. Si lo dejas en `null`, se usa un UUID aleatorio.
-3. Ejecuta. Se mostrará una tabla de unas 30 comprobaciones: **todas deben decir `OK`**.
+4. Ejecuta el script **entero de una vez**. Al contrario que las consultas de verificación, aquí el resultado que importa es el de la última sentencia. Se mostrará una tabla de 30 comprobaciones: **todas deben decir `OK`**.
+
+**Aviso de «operaciones destructivas».** Es posible que el SQL Editor pida confirmación porque el script contiene `DELETE`, `DROP`, `TRUNCATE` o `ALTER`. Es esperado y se puede confirmar:
+- Son intentos de escritura que el script ejecuta como `anon` y como `authenticated`. **Deben fallar** por falta de permisos, y eso es precisamente lo que se comprueba.
+- Si alguno llegara a funcionar, el script lo deshace en el momento y lo marca como `FALLO`.
+- El único `TRUNCATE` que se ejecuta de verdad vacía la tabla temporal de resultados del propio script.
+- No se modifica ninguna tabla, política ni función del proyecto.
+
+Para confirmarlo, después del script puedes repetir las consultas de verificación de la sección 5 (paso 6) y la primera de la sección 6 (paso 3): deben dar lo mismo que antes.
 
 El script no deja cambios. Simula peticiones como `anon` (sin sesión) y como `authenticated` con cada UUID, igual que hace Supabase con el JWT de cada petición. Comprueba lo siguiente:
 - **Configuración:**
