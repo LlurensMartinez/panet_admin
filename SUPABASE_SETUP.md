@@ -171,7 +171,9 @@ En **Project Settings → Data API** (o *API*), la lista **Exposed schemas** no 
 
 ## 6. Autorizar la cuenta
 
-Una cuenta solo tiene acceso a los datos si su UUID está en `public.profiles`. Se hace a mano en el **SQL Editor**, que se ejecuta como `postgres`.
+Una cuenta solo tiene acceso a los datos si su UUID está en `public.profiles`. Se hace a mano en el **SQL Editor**, con el selector **Role** en **`postgres`**: `profiles` no admite altas desde ningún otro rol. Ejecuta las consultas **una a una**.
+
+Haz esta sección justo después de la 5. Mientras la cuenta no esté en `profiles`, la app mostrará «Acceso no autorizado».
 
 1. **Busca el UUID** de la cuenta, en *Authentication → Users* o con:
 
@@ -186,23 +188,23 @@ Una cuenta solo tiene acceso a los datos si su UUID está en `public.profiles`. 
    values ('00000000-0000-0000-0000-000000000000', 'Encargada');
    ```
 
-3. **Comprueba que está autorizada:**
+3. **Comprueba que está autorizada** con estas dos consultas, una a una:
 
    ```sql
-   -- Cuentas autorizadas
    select p.id, u.email, p.display_name, p.created_at
    from public.profiles p
    join auth.users u on u.id = p.id;
-
-   -- Simula una petición de esa cuenta: debe devolver true.
-   -- No deja cambios: se revierte al final.
-   begin;
-   select set_config('request.jwt.claims',
-     '{"sub":"00000000-0000-0000-0000-000000000000","role":"authenticated"}', true);
-   set local role authenticated;
-   select private.is_authorized() as autorizada;
-   rollback;
    ```
+   Esperado: una fila con el correo de la cuenta autorizada.
+
+   ```sql
+   select exists (
+     select 1 from public.profiles where id = '00000000-0000-0000-0000-000000000000'
+   ) as autorizada;
+   ```
+   Sustituye el UUID. Esperado: `autorizada = true`.
+
+   La comprobación completa, simulando peticiones como esa cuenta, como una cuenta no autorizada y sin sesión, la hace el script de la sección 7.1.
 
 **Retirar una autorización:** `delete from public.profiles where id = '<uuid>';`. Solo borra la autorización, no la cuenta de Supabase Auth. El acceso a los datos protegidos se corta en la siguiente consulta, aunque la sesión siga abierta.
 
