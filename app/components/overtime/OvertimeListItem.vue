@@ -23,7 +23,7 @@ const menuItems = computed(() => [[
 
 <template>
   <li
-    class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3.5 motion-safe:transition-colors motion-safe:duration-700 sm:px-5 md:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem]"
+    class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-4 py-3.5 motion-safe:transition-colors motion-safe:duration-700 sm:px-5 lg:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem]"
     :class="highlighted ? 'bg-primary/8' : 'bg-transparent'"
     :aria-busy="pending || undefined"
   >
@@ -41,12 +41,12 @@ const menuItems = computed(() => [[
             class="ms-1 text-xs font-medium text-muted"
           >(inactivo)</span>
         </p>
-        <p class="truncate text-sm text-muted md:hidden">
+        <p class="truncate text-sm text-muted lg:hidden">
           <time :datetime="entry.work_date">{{ dateText }}</time>
         </p>
         <p
           v-if="entry.reason"
-          class="truncate text-sm text-toned md:hidden"
+          class="truncate text-sm text-toned lg:hidden"
         >
           {{ entry.reason }}
         </p>
@@ -54,12 +54,12 @@ const menuItems = computed(() => [[
     </div>
 
     <!-- Fecha (escritorio) -->
-    <p class="hidden text-sm text-default md:block">
+    <p class="hidden text-sm text-default lg:block">
       <time :datetime="entry.work_date">{{ dateText }}</time>
     </p>
 
     <!-- Duración + menú (móvil) -->
-    <div class="flex items-center justify-end gap-1.5 md:justify-start">
+    <div class="flex items-center justify-end gap-1.5 lg:justify-start">
       <p class="whitespace-nowrap font-semibold text-highlighted tabular-nums">
         {{ formatDuration(entry.duration_minutes) }}
       </p>
@@ -67,7 +67,7 @@ const menuItems = computed(() => [[
         :items="menuItems"
         :content="{ align: 'end' }"
         :disabled="pending"
-        class="md:hidden"
+        class="lg:hidden"
       >
         <UButton
           color="neutral"
@@ -76,14 +76,14 @@ const menuItems = computed(() => [[
           :loading="pending"
           :disabled="pending"
           :aria-label="`Acciones para el registro de ${actionTarget}`"
-          class="md:hidden"
+          class="lg:hidden"
         />
       </UDropdownMenu>
     </div>
 
     <!-- Motivo (escritorio) -->
     <p
-      class="hidden truncate text-sm md:block"
+      class="hidden truncate text-sm lg:block"
       :title="entry.reason || undefined"
     >
       <span
@@ -97,7 +97,7 @@ const menuItems = computed(() => [[
     </p>
 
     <!-- Acciones (escritorio) -->
-    <div class="hidden items-center justify-end gap-1 md:flex">
+    <div class="hidden items-center justify-end gap-1 lg:flex">
       <UButton
         label="Editar"
         :aria-label="`Editar el registro de ${actionTarget}`"

@@ -11,7 +11,7 @@ defineProps({
 const emit = defineEmits(['edit', 'delete'])
 
 const SKELETON_ROWS = 5
-const COLUMNS = 'md:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem]'
+const COLUMNS = 'lg:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem]'
 </script>
 
 <template>
@@ -20,7 +20,7 @@ const COLUMNS = 'md:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem
 
     <div
       v-if="loading || entries.length"
-      class="hidden gap-x-4 border-b border-default px-5 py-2.5 text-xs font-medium text-muted md:grid"
+      class="hidden gap-x-4 border-b border-default px-5 py-2.5 text-xs font-medium text-muted lg:grid"
       :class="COLUMNS"
       aria-hidden="true"
     >
@@ -45,9 +45,9 @@ const COLUMNS = 'md:grid-cols-[minmax(0,1.3fr)_9.5rem_7rem_minmax(0,1.2fr)_12rem
         <USkeleton class="size-10 rounded-full" />
         <div class="flex-1 space-y-2">
           <USkeleton class="h-3.5 w-40 max-w-[60%]" />
-          <USkeleton class="h-3 w-24 md:hidden" />
+          <USkeleton class="h-3 w-24 lg:hidden" />
         </div>
-        <USkeleton class="hidden h-3.5 w-24 md:block" />
+        <USkeleton class="hidden h-3.5 w-24 lg:block" />
         <USkeleton class="h-4 w-16" />
       </li>
     </ul>
