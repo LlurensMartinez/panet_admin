@@ -219,6 +219,90 @@ export function hasOvertimeChanges(entry, values) {
     .some(field => (entry[field] ?? null) !== data[field])
 }
 
+// ------------------------------------------------------- Periodos rápidos
+
+export const OVERTIME_PERIOD = Object.freeze({
+  TODAY: 'today',
+  WEEK: 'week',
+  MONTH: 'month',
+  YEAR: 'year',
+  // Fechas «Desde» y «Hasta» elegidas a mano. Si solo hay una, el periodo
+  // queda abierto por el otro lado (como el filtro de fechas de siempre):
+  // solo «Desde» = desde ese día en adelante; solo «Hasta» = hasta ese día.
+  // Sin ninguna, se ven todas las fechas.
+  CUSTOM: 'custom',
+})
+
+export const OVERTIME_PERIOD_OPTIONS = Object.freeze([
+  { value: OVERTIME_PERIOD.TODAY, label: 'Hoy' },
+  { value: OVERTIME_PERIOD.WEEK, label: 'Semanal' },
+  { value: OVERTIME_PERIOD.MONTH, label: 'Mensual' },
+  { value: OVERTIME_PERIOD.YEAR, label: 'Anual' },
+  { value: OVERTIME_PERIOD.CUSTOM, label: 'Personalizado' },
+])
+
+/** Suma días a una fecha YYYY-MM-DD (aritmética de calendario, en UTC). */
+export function addDaysToDate(date, days) {
+  const value = new Date(`${date}T00:00:00Z`)
+  value.setUTCDate(value.getUTCDate() + days)
+  return value.toISOString().slice(0, 10)
+}
+
+/**
+ * Fechas de un periodo rápido a partir del día de hoy (YYYY-MM-DD en la zona
+ * horaria de la tienda, ver getTodayDate). Todo se calcula sobre fechas de
+ * calendario, sin horas, así que no hay cambios de día por zona horaria ni
+ * por el cambio de horario de verano.
+ *
+ * - Hoy: solo el día actual.
+ * - Semanal: de lunes a domingo de la semana actual.
+ * - Mensual: del día 1 al último día del mes natural.
+ * - Anual: del 1 de enero al 31 de diciembre.
+ *
+ * @returns {{ from: string, to: string } | null} null si no es un periodo rápido
+ */
+export function getPeriodRange(period, today = getTodayDate()) {
+  if (!isValidDate(today)) return null
+  const [year, month] = today.split('-').map(Number)
+  const yyyy = String(year).padStart(4, '0')
+  const mm = String(month).padStart(2, '0')
+
+  switch (period) {
+    case OVERTIME_PERIOD.TODAY:
+      return { from: today, to: today }
+    case OVERTIME_PERIOD.WEEK: {
+      // getUTCDay: 0 = domingo … 6 = sábado → días desde el lunes.
+      const daysSinceMonday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7
+      const monday = addDaysToDate(today, -daysSinceMonday)
+      return { from: monday, to: addDaysToDate(monday, 6) }
+    }
+    case OVERTIME_PERIOD.MONTH: {
+      // Día 0 del mes siguiente = último día de este mes (años bisiestos incluidos).
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+      return { from: `${yyyy}-${mm}-01`, to: `${yyyy}-${mm}-${String(lastDay).padStart(2, '0')}` }
+    }
+    case OVERTIME_PERIOD.YEAR:
+      return { from: `${yyyy}-01-01`, to: `${yyyy}-12-31` }
+    default:
+      return null
+  }
+}
+
+/**
+ * Nuevo estado del filtro de fechas al elegir un periodo en el selector.
+ * - Periodo rápido: fija «Desde» y «Hasta» con sus fechas.
+ * - Personalizado: conserva las fechas actuales para poder ajustarlas.
+ *
+ * @returns {{ period: string | null, from: string, to: string }}
+ */
+export function selectOvertimePeriod(period, current = {}, today = getTodayDate()) {
+  if (period === OVERTIME_PERIOD.CUSTOM) {
+    return { period, from: current.from ?? '', to: current.to ?? '' }
+  }
+  const range = getPeriodRange(period, today)
+  return range ? { period, ...range } : { period: null, from: '', to: '' }
+}
+
 // ------------------------------------------------ Filtros, totales y orden
 
 /**

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   OVERTIME_COLUMNS,
+  OVERTIME_PERIOD,
+  OVERTIME_PERIOD_OPTIONS,
+  addDaysToDate,
+  getPeriodRange,
+  selectOvertimePeriod,
   describeOvertimeFilters,
   filterOvertimeEntries,
   formatDuration,
@@ -260,6 +265,162 @@ describe('descripción de los filtros', () => {
     [{ employeeName: 'Ana López', to: '2026-10-31' }, 'Ana López, hasta el 31 oct 2026'],
   ])('%o', (filters, text) => {
     expect(describeOvertimeFilters(filters)).toBe(text)
+  })
+})
+
+describe('periodos rápidos', () => {
+  const P = OVERTIME_PERIOD
+
+  it('opciones del selector, en orden', () => {
+    expect(OVERTIME_PERIOD_OPTIONS.map(o => o.label)).toEqual(['Hoy', 'Semanal', 'Mensual', 'Anual', 'Personalizado'])
+  })
+
+  it('sumar días cruza meses y años sin cambiar de día por la zona horaria', () => {
+    expect(addDaysToDate('2026-10-31', 1)).toBe('2026-11-01')
+    expect(addDaysToDate('2026-12-31', 1)).toBe('2027-01-01')
+    expect(addDaysToDate('2027-01-01', -1)).toBe('2026-12-31')
+    expect(addDaysToDate('2028-02-28', 1)).toBe('2028-02-29')
+    // Fin del horario de verano en España: domingo 25 de octubre de 2026.
+    expect(addDaysToDate('2026-10-24', 1)).toBe('2026-10-25')
+    expect(addDaysToDate('2026-10-25', 1)).toBe('2026-10-26')
+  })
+
+  it('Hoy: solo el día actual', () => {
+    expect(getPeriodRange(P.TODAY, '2026-10-28')).toEqual({ from: '2026-10-28', to: '2026-10-28' })
+  })
+
+  describe('Semanal: de lunes a domingo', () => {
+    it.each([
+      ['un miércoles', '2026-10-28', '2026-10-26', '2026-11-01'],
+      ['el lunes (primer día)', '2026-10-26', '2026-10-26', '2026-11-01'],
+      ['el domingo (último día)', '2026-11-01', '2026-10-26', '2026-11-01'],
+      ['la semana del cambio de hora (domingo 25 oct)', '2026-10-25', '2026-10-19', '2026-10-25'],
+      ['semana que cruza de mes', '2026-09-30', '2026-09-28', '2026-10-04'],
+      ['semana que cruza de año (jueves 31 dic)', '2026-12-31', '2026-12-28', '2027-01-03'],
+      ['semana que cruza de año (viernes 1 ene)', '2027-01-01', '2026-12-28', '2027-01-03'],
+      ['1 de enero en lunes', '2024-01-01', '2024-01-01', '2024-01-07'],
+      ['semana con 29 de febrero', '2028-02-29', '2028-02-28', '2028-03-05'],
+    ])('%s', (_, today, from, to) => {
+      expect(getPeriodRange(P.WEEK, today)).toEqual({ from, to })
+    })
+
+    it('siempre son 7 días y empieza en lunes', () => {
+      for (let i = 0; i < 400; i++) {
+        const today = addDaysToDate('2026-01-01', i)
+        const { from, to } = getPeriodRange(P.WEEK, today)
+        expect(new Date(`${from}T00:00:00Z`).getUTCDay()).toBe(1)
+        expect(new Date(`${to}T00:00:00Z`).getUTCDay()).toBe(0)
+        expect(addDaysToDate(from, 6)).toBe(to)
+        expect(from <= today && today <= to).toBe(true)
+      }
+    })
+  })
+
+  describe('Mensual: mes natural', () => {
+    it.each([
+      ['octubre (31 días)', '2026-10-28', '2026-10-01', '2026-10-31'],
+      ['noviembre (30 días)', '2026-11-15', '2026-11-01', '2026-11-30'],
+      ['febrero normal', '2026-02-10', '2026-02-01', '2026-02-28'],
+      ['febrero bisiesto', '2028-02-10', '2028-02-01', '2028-02-29'],
+      ['primer día del mes', '2026-10-01', '2026-10-01', '2026-10-31'],
+      ['último día del año', '2026-12-31', '2026-12-01', '2026-12-31'],
+      ['primer día del año', '2027-01-01', '2027-01-01', '2027-01-31'],
+    ])('%s', (_, today, from, to) => {
+      expect(getPeriodRange(P.MONTH, today)).toEqual({ from, to })
+    })
+  })
+
+  describe('Anual: año natural', () => {
+    it.each([
+      ['a mitad de año', '2026-10-28', '2026-01-01', '2026-12-31'],
+      ['31 de diciembre', '2026-12-31', '2026-01-01', '2026-12-31'],
+      ['1 de enero', '2027-01-01', '2027-01-01', '2027-12-31'],
+    ])('%s', (_, today, from, to) => {
+      expect(getPeriodRange(P.YEAR, today)).toEqual({ from, to })
+    })
+  })
+
+  it('«hoy» en España decide el periodo cerca de medianoche', () => {
+    // 23:30 UTC del 31 dic = 0:30 del 1 ene en Madrid: ya es el año nuevo.
+    const today = getTodayDate(new Date('2026-12-31T23:30:00Z'))
+    expect(today).toBe('2027-01-01')
+    expect(getPeriodRange(P.YEAR, today)).toEqual({ from: '2027-01-01', to: '2027-12-31' })
+    expect(getPeriodRange(P.MONTH, today)).toEqual({ from: '2027-01-01', to: '2027-01-31' })
+    expect(getPeriodRange(P.WEEK, today)).toEqual({ from: '2026-12-28', to: '2027-01-03' })
+    // 22:30 UTC del 31 dic = 23:30 en Madrid: todavía 2026.
+    expect(getPeriodRange(P.YEAR, getTodayDate(new Date('2026-12-31T22:30:00Z')))).toEqual({ from: '2026-01-01', to: '2026-12-31' })
+  })
+
+  it('periodo desconocido o fecha inválida → sin rango', () => {
+    expect(getPeriodRange(P.CUSTOM, '2026-10-28')).toBeNull()
+    expect(getPeriodRange('quincenal', '2026-10-28')).toBeNull()
+    expect(getPeriodRange(P.WEEK, '2026-02-30')).toBeNull()
+  })
+
+  describe('selección en el selector', () => {
+    it('un periodo rápido rellena «Desde» y «Hasta»', () => {
+      expect(selectOvertimePeriod(P.WEEK, { from: '', to: '' }, '2026-10-28'))
+        .toEqual({ period: P.WEEK, from: '2026-10-26', to: '2026-11-01' })
+      expect(selectOvertimePeriod(P.TODAY, { from: '2020-01-01', to: '' }, '2026-10-28'))
+        .toEqual({ period: P.TODAY, from: '2026-10-28', to: '2026-10-28' })
+    })
+
+    it('Personalizado conserva las fechas actuales para ajustarlas', () => {
+      expect(selectOvertimePeriod(P.CUSTOM, { from: '2026-10-01', to: '2026-10-31' }, '2026-10-28'))
+        .toEqual({ period: P.CUSTOM, from: '2026-10-01', to: '2026-10-31' })
+      expect(selectOvertimePeriod(P.CUSTOM, {}, '2026-10-28'))
+        .toEqual({ period: P.CUSTOM, from: '', to: '' })
+    })
+
+    it('sin periodo → todas las fechas', () => {
+      expect(selectOvertimePeriod(null, { from: '2026-10-01', to: '2026-10-31' }, '2026-10-28'))
+        .toEqual({ period: null, from: '', to: '' })
+    })
+  })
+
+  describe('aplicado al listado (reutiliza filterOvertimeEntries)', () => {
+    // entries: 1 oct (90), 15 oct (45, 30), 31 oct (120), 2 nov (15)
+    const apply = (period, today, extra = {}) => filterOvertimeEntries(entries, { ...selectOvertimePeriod(period, {}, today), ...extra })
+
+    it('semana del 26 oct al 1 nov', () => {
+      expect(apply(P.WEEK, '2026-10-28').map(e => e.id)).toEqual(['o4'])
+    })
+
+    it('semana siguiente: incluye el 2 nov y no el 31 oct', () => {
+      expect(apply(P.WEEK, '2026-11-02').map(e => e.id)).toEqual(['o5'])
+    })
+
+    it('mes de octubre: incluye el día 1 y el 31', () => {
+      const result = apply(P.MONTH, '2026-10-28')
+      expect(result.map(e => e.id)).toEqual(['o1', 'o2', 'o3', 'o4'])
+      expect(sumDurationMinutes(result)).toBe(285)
+    })
+
+    it('año completo y año siguiente', () => {
+      expect(apply(P.YEAR, '2026-05-05')).toHaveLength(5)
+      expect(apply(P.YEAR, '2027-01-01')).toHaveLength(0)
+    })
+
+    it('hoy', () => {
+      expect(apply(P.TODAY, '2026-10-15').map(e => e.id)).toEqual(['o2', 'o3'])
+    })
+
+    it('se combina con el filtro por empleado', () => {
+      const result = apply(P.MONTH, '2026-10-28', { employeeId: 'ana' })
+      expect(result.map(e => e.id)).toEqual(['o1', 'o2'])
+      expect(formatDuration(sumDurationMinutes(result))).toBe('2 h 15 min')
+    })
+
+    it('personalizado con una sola fecha: periodo abierto por el otro lado', () => {
+      expect(filterOvertimeEntries(entries, { period: P.CUSTOM, from: '2026-10-31', to: '' }).map(e => e.id)).toEqual(['o4', 'o5'])
+      expect(filterOvertimeEntries(entries, { period: P.CUSTOM, from: '', to: '2026-10-15' }).map(e => e.id)).toEqual(['o1', 'o2', 'o3'])
+      expect(describeOvertimeFilters({ from: '2026-10-31' })).toBe('Todos los empleados, desde el 31 oct 2026')
+      expect(describeOvertimeFilters({ to: '2026-10-15' })).toBe('Todos los empleados, hasta el 15 oct 2026')
+    })
+
+    it('personalizado sin fechas: todas las fechas', () => {
+      expect(filterOvertimeEntries(entries, { period: P.CUSTOM, from: '', to: '' })).toHaveLength(5)
+    })
   })
 })
 
