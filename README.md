@@ -8,12 +8,17 @@ Documentación del proyecto:
 - `DATA_MODEL.md`: modelo de datos y seguridad.
 - `IMPLEMENTATION_PLAN.md`: fases de implementación.
 - `CLAUDE.md`: instrucciones para Claude Code.
+- `SUPABASE_SETUP.md`: configuración de Supabase, acceso privado y pasos pendientes.
 
 ## Stack
 
-Nuxt 4 · JavaScript · Nuxt UI 4 · Tailwind CSS 4 · ESLint (`@nuxt/eslint`) · npm
+Nuxt 4 · JavaScript · Nuxt UI 4 · Tailwind CSS 4 · Supabase (`@nuxtjs/supabase`) · ESLint (`@nuxt/eslint`) · npm
 
 Requiere Node.js `^22.22.3`, `^24.15.0` o `>=26`.
+
+## Configuración
+
+Copia `.env.example` como `.env` y rellena la URL y la clave publicable de Supabase (ver `SUPABASE_SETUP.md`). Sin ellas, la aplicación compila pero muestra un aviso de configuración pendiente en todas las páginas.
 
 ## Comandos
 
@@ -30,9 +35,15 @@ npm run lint:fix  # corrige automáticamente lo que se pueda
 
 ```
 app/
-  app.vue              # raíz: <UApp> + <NuxtPage>
-  assets/css/main.css  # importa Tailwind CSS y Nuxt UI
-  pages/index.vue      # página inicial provisional
+  app.vue                    # raíz: <UApp> + <NuxtLayout> + <NuxtPage>
+  error.vue                  # página de error (incluye configuración pendiente)
+  assets/css/main.css        # importa Tailwind CSS y Nuxt UI
+  layouts/default.vue        # cabecera de las páginas privadas
+  components/LogoutButton.vue
+  middleware/auth.global.js  # exige sesión verificada salvo en /login
+  pages/login.vue            # inicio de sesión (sin registro)
+  pages/index.vue            # página privada provisional
+  utils/                     # mensajes de error de acceso y redirección segura
 nuxt.config.js
 eslint.config.mjs
 ```
