@@ -50,6 +50,11 @@ function goToCurrent() {
 function viewRecords(row) {
   emit('view-records', { employeeId: row.id, ...range.value })
 }
+
+// Mensaje para compartir: usa el mismo resumen que la tabla.
+const shareOpen = ref(false)
+const sharePanelId = useId()
+const canShare = computed(() => !props.loading && summary.value.entryCount > 0)
 </script>
 
 <template>
@@ -258,6 +263,37 @@ function viewRecords(row) {
         </ul>
       </template>
     </div>
+
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <UButton
+        label="Preparar resumen para compartir"
+        icon="i-lucide-message-square-text"
+        color="primary"
+        variant="soft"
+        size="lg"
+        class="justify-center"
+        :disabled="!canShare"
+        :aria-expanded="shareOpen && canShare"
+        :aria-controls="sharePanelId"
+        @click="shareOpen = !shareOpen"
+      />
+      <p
+        v-if="!loading && !summary.entryCount"
+        class="px-1 text-sm text-muted"
+      >
+        No hay horas extra en {{ isCurrent ? unit.this : `${unit.the} consultad${isWeek ? 'a' : 'o'}` }}: no hay nada que compartir.
+      </p>
+    </div>
+
+    <OvertimeShareMessage
+      v-if="shareOpen"
+      :id="sharePanelId"
+      :view="view"
+      :range="range"
+      :summary="summary"
+      :title="title"
+      @close="shareOpen = false"
+    />
 
     <p class="px-1 text-sm text-muted">
       El resumen suma todos los registros {{ isWeek ? 'de la semana (de lunes a domingo)' : 'del mes natural' }}, también los de empleados inactivos, y no depende de los filtros de la pestaña «Registros».
