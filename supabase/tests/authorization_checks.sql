@@ -54,6 +54,11 @@ declare
   v_unauthorized uuid := null;
   -- ---------------------------------------------------------------------------
 
+  -- Rol con el que se ejecuta el script (debe ser postgres). Se restaura
+  -- con set_config('role', …, true), que es local a la transacción; RESET ROLE
+  -- cambiaría el rol de toda la sesión.
+  v_original_role text := current_user;
+  v_unauthorized_is_random boolean;
   r text[] := '{}';            -- resultados: grupo|comprobación|resultado
   v_count int;
   v_bool boolean;
@@ -172,7 +177,7 @@ begin
     when others then r := r || format('anon|Insertarse en profiles|FALLO (%s)', sqlerrm);
   end;
 
-  reset role;
+  perform set_config('role', v_original_role, true);
 
   -- ===================================== 3. Autenticada pero NO autorizada
   perform set_config('request.jwt.claims',
@@ -180,13 +185,21 @@ begin
   perform set_config('request.jwt.claim.sub', v_unauthorized::text, true);
   set local role authenticated;
 
-  v_bool := private.is_authorized();
-  r := r || format('no autorizada|is_authorized() devuelve false|%s',
-    case when v_bool = false then 'OK' else 'FALLO' end);
+  begin
+    v_bool := private.is_authorized();
+    r := r || format('no autorizada|is_authorized() devuelve false|%s',
+      case when v_bool = false then 'OK' else format('FALLO (devuelve %s)', coalesce(v_bool::text, 'null')) end);
+  exception when others then
+    r := r || format('no autorizada|is_authorized() devuelve false|FALLO (error %s: %s)', sqlstate, replace(sqlerrm, '|', '/'));
+  end;
 
-  select count(*) into v_count from public.profiles;
-  r := r || format('no autorizada|No ve ninguna fila de profiles|%s',
-    case when v_count = 0 then 'OK' else format('FALLO (ve %s)', v_count) end);
+  begin
+    select count(*) into v_count from public.profiles;
+    r := r || format('no autorizada|No ve ninguna fila de profiles|%s',
+      case when v_count = 0 then 'OK' else format('FALLO (ve %s)', v_count) end);
+  exception when others then
+    r := r || format('no autorizada|No ve ninguna fila de profiles|FALLO (error %s: %s)', sqlstate, replace(sqlerrm, '|', '/'));
+  end;
 
   foreach stmt in array denied_writes loop
     begin
@@ -202,7 +215,7 @@ begin
     end;
   end loop;
 
-  reset role;
+  perform set_config('role', v_original_role, true);
 
   -- =========================================================== 4. Autorizada
   perform set_config('request.jwt.claims',
@@ -210,17 +223,29 @@ begin
   perform set_config('request.jwt.claim.sub', v_authorized::text, true);
   set local role authenticated;
 
-  v_bool := private.is_authorized();
-  r := r || format('autorizada|is_authorized() devuelve true|%s',
-    case when v_bool then 'OK' else 'FALLO' end);
+  begin
+    v_bool := private.is_authorized();
+    r := r || format('autorizada|is_authorized() devuelve true|%s',
+      case when v_bool then 'OK' else format('FALLO (devuelve %s)', coalesce(v_bool::text, 'null')) end);
+  exception when others then
+    r := r || format('autorizada|is_authorized() devuelve true|FALLO (error %s: %s)', sqlstate, replace(sqlerrm, '|', '/'));
+  end;
 
-  select count(*) into v_count from public.profiles where id = v_authorized;
-  r := r || format('autorizada|Lee su propia fila|%s',
-    case when v_count = 1 then 'OK' else 'FALLO' end);
+  begin
+    select count(*) into v_count from public.profiles where id = v_authorized;
+    r := r || format('autorizada|Lee su propia fila|%s',
+      case when v_count = 1 then 'OK' else format('FALLO (ve %s)', v_count) end);
+  exception when others then
+    r := r || format('autorizada|Lee su propia fila|FALLO (error %s: %s)', sqlstate, replace(sqlerrm, '|', '/'));
+  end;
 
-  select count(*) into v_count from public.profiles where id <> v_authorized;
-  r := r || format('autorizada|No ve filas de otras cuentas|%s',
-    case when v_count = 0 then 'OK' else format('FALLO (ve %s)', v_count) end);
+  begin
+    select count(*) into v_count from public.profiles where id <> v_authorized;
+    r := r || format('autorizada|No ve filas de otras cuentas|%s',
+      case when v_count = 0 then 'OK' else format('FALLO (ve %s)', v_count) end);
+  exception when others then
+    r := r || format('autorizada|No ve filas de otras cuentas|FALLO (error %s: %s)', sqlstate, replace(sqlerrm, '|', '/'));
+  end;
 
   -- Tampoco puede modificar ni retirar su propia autorización desde el cliente.
   foreach stmt in array denied_writes[1:4] loop
@@ -237,7 +262,7 @@ begin
     end;
   end loop;
 
-  reset role;
+  perform set_config('role', v_original_role, true);
   perform set_config('request.jwt.claims', '', true);
   perform set_config('request.jwt.claim.sub', '', true);
 
