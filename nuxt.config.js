@@ -23,6 +23,13 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  ui: {
+    // Las fuentes se sirven desde app/assets/fonts (ver main.css). Se
+    // desactiva el módulo de fuentes de Nuxt UI para que la compilación no
+    // consulte proveedores externos (Google Fonts, Bunny…).
+    fonts: false,
+  },
+
   compatibilityDate: '2026-10-28',
 
   eslint: {
