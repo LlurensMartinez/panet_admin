@@ -8,7 +8,7 @@ Documentación del proyecto:
 - `DATA_MODEL.md`: modelo de datos y seguridad.
 - `IMPLEMENTATION_PLAN.md`: fases de implementación.
 - `CLAUDE.md`: instrucciones para Claude Code.
-- `SUPABASE_SETUP.md`: configuración de Supabase, acceso privado y pasos pendientes.
+- `SUPABASE_SETUP.md`: configuración de Supabase, autorización (RLS), verificación y pasos pendientes.
 
 ## Stack
 
