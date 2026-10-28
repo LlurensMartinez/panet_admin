@@ -38,13 +38,13 @@
 
 ## Fase 2 — Personal y horas extra
 - Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`. *(Migración preparada: `supabase/migrations/20261028125000_employees_overtime.sql`, con sus comprobaciones en `supabase/tests/staff_rls_checks.sql`. Verificada en un PostgreSQL local que imita Supabase; **pendiente de aplicar y comprobar en el proyecto remoto** (`SUPABASE_SETUP.md`, sección 9).)*
-- Crear listado y formulario de trabajadoras.
+- Crear listado y formulario de trabajadoras. *(Implementado en `/empleados`: listado con búsqueda y filtro por estado, alta, edición y activación/desactivación, sin borrado. Verificado con pruebas unitarias y con pruebas de extremo a extremo en local contra PostgREST y PostgreSQL con la migración aplicada. **Pendiente:** probarlo manualmente contra el proyecto de Supabase real, una vez comprobada allí la migración de la Fase 2.)*
 - Crear formulario móvil para registrar horas extra.
 - Crear historial individual y general.
 - Calcular totales semanales (lunes-domingo) y mensuales.
 - Generar texto compartible para la responsable de zona.
 - Permitir editar registros.
-- Mantener historial de trabajadoras desactivadas.
+- Mantener historial de trabajadoras desactivadas. *(Parte de fichas hecha: desactivar solo cambia `is_active` y la ficha se conserva. El historial de horas extra se comprobará cuando exista su pantalla.)*
 
 **Aceptación:** los totales coinciden con pruebas manuales y la duración se guarda en minutos enteros.
 
