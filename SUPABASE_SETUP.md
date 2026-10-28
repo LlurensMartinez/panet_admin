@@ -217,11 +217,25 @@ Haz esta sección justo después de la 5. Mientras la cuenta no esté en `profil
 Archivo: `supabase/tests/authorization_checks.sql`.
 
 1. **Opcional, pero recomendado:** crea una **segunda cuenta de prueba** en *Authentication → Users* (con *Auto Confirm User*) y **no** la añadas a `profiles`.
-2. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en **`postgres`**. El script cambia de rol por sí mismo para simular cada caso.
-3. Pega el script **completo** y, en la sección `CONFIGURACIÓN`, sustituye:
-   - `v_authorized`: el UUID de la cuenta autorizada.
-   - `v_unauthorized`: el UUID de la segunda cuenta. Si lo dejas en `null`, se usa un UUID aleatorio.
-4. Ejecuta el script **entero de una vez**. Al contrario que las consultas de verificación, aquí el resultado que importa es el de la última sentencia. Se mostrará una tabla de 30 comprobaciones: **todas deben decir `OK`**.
+2. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en **`postgres`**, sin suplantar a ninguna usuaria. El script cambia de rol por sí mismo para simular cada caso y al terminar restaura el rol original. Si se lanza con otro rol, falla o da resultados engañosos.
+3. Pega el script **completo** y, en la sección `CONFIGURACIÓN` (al principio del bloque `do $$`), **sustituye los UUID de ejemplo** por los de tus cuentas. Los encontrarás en *Authentication → Users* o con la consulta del paso 1 de la sección 6. Mantén las comillas simples:
+   - `v_authorized uuid := '…';` → **obligatorio**: el UUID de la cuenta autorizada, que ya debe estar en `profiles`. Si dejas el valor de ejemplo `00000000-0000-0000-0000-000000000000`, el script se detiene con el mensaje «Sustituye v_authorized…».
+   - `v_unauthorized uuid := null;` → **recomendado**: el UUID de la segunda cuenta, entre comillas (`'…'`). Si lo dejas en `null`, se usa un UUID aleatorio que no corresponde a ninguna cuenta real. La prueba de RLS sigue siendo válida, pero no comprueba una cuenta existente.
+4. Ejecuta el script **entero de una vez**. Al contrario que las consultas de verificación, aquí el resultado que importa es el de la última sentencia.
+
+**Cómo leer el resultado.** Se muestra una tabla de **31 filas**:
+
+- **30 comprobaciones** cuyo `resultado` debe empezar por **`OK`**. En los intentos que deben estar prohibidos aparece `OK (denegado)`: el rechazo es el resultado correcto.
+- **1 fila informativa** («Segunda cuenta: existe en auth.users») cuyo resultado empieza por **`INFO`**. **No es una comprobación y no cuenta como fallo**:
+  - `INFO: sí, es una cuenta real`: has indicado una segunda cuenta existente, que es lo recomendado.
+  - `INFO: UUID aleatorio …`: dejaste `v_unauthorized` en `null`.
+  - `INFO: no existe; revisa el UUID de v_unauthorized`: el UUID no corresponde a ninguna cuenta, probablemente por una errata. Corrígelo y vuelve a ejecutar.
+- **Cualquier fila con `FALLO`** indica un problema de seguridad o de configuración. No sigas adelante. Si la causa es un error, el mensaje incluye su código, por ejemplo `FALLO (error 42501: permission denied …)`.
+
+Si en lugar de la tabla aparece un error, lo habitual es una de estas causas:
+- no se sustituyó `v_authorized`;
+- el selector Role no está en `postgres`;
+- la migración de la sección 5 no está aplicada.
 
 **Aviso de «operaciones destructivas».** Es posible que el SQL Editor pida confirmación porque el script contiene `DELETE`, `DROP`, `TRUNCATE` o `ALTER`. Es esperado y se puede confirmar:
 - Son intentos de escritura que el script ejecuta como `anon` y como `authenticated`. **Deben fallar** por falta de permisos, y eso es precisamente lo que se comprueba.
@@ -231,7 +245,7 @@ Archivo: `supabase/tests/authorization_checks.sql`.
 
 Para confirmarlo, después del script puedes repetir las consultas de verificación de la sección 5 (paso 6) y la primera de la sección 6 (paso 3): deben dar lo mismo que antes.
 
-El script no deja cambios. Simula peticiones como `anon` (sin sesión) y como `authenticated` con cada UUID, igual que hace Supabase con el JWT de cada petición. Comprueba lo siguiente:
+El script no deja cambios en la base de datos ni en la sesión del SQL Editor. Simula peticiones como `anon` (sin sesión) y como `authenticated` con cada UUID, igual que hace Supabase con el JWT de cada petición. Comprueba lo siguiente:
 - **Configuración:**
   - RLS activo y una única política.
   - Privilegios de `anon` y `authenticated`.

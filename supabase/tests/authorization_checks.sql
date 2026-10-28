@@ -23,16 +23,21 @@
 --   - un TRUNCATE de la tabla temporal de resultados de este propio script.
 -- Ninguna de ellas modifica tablas, políticas ni funciones reales.
 --
--- No deja cambios en la base de datos:
+-- No deja cambios en la base de datos ni en la sesión:
 --   - simula peticiones como `anon` y `authenticated` cambiando de rol dentro
---     de la transacción, igual que hace Supabase con cada petición;
+--     de la transacción, igual que hace Supabase con cada petición; el rol
+--     original y las variables de los claims se restauran con cambios locales
+--     a la transacción, que desaparecen al terminar;
 --   - cada intento de escritura se ejecuta en un bloque que se revierte
 --     siempre; si una escritura que debería estar prohibida funciona, se
 --     deshace al momento y se marca como FALLO;
 --   - el resultado se muestra desde una tabla temporal que desaparece al cerrar
 --     la sesión.
 --
--- Resultado esperado: todas las filas con `resultado = 'OK'`.
+-- Resultado esperado: todas las filas con `resultado` que empieza por 'OK',
+-- salvo una fila informativa ('INFO') que indica si el UUID de la segunda
+-- cuenta existe en auth.users. Un error de permisos en cualquier prueba se
+-- registra como 'FALLO (error <código>: <mensaje>)' sin detener el script.
 -- =============================================================================
 
 create temp table if not exists rls_check_results (
