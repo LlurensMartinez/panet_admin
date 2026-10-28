@@ -127,7 +127,11 @@ begin
   ];
 
   -- =========================================================== 2. Sin sesión (anon)
+  -- auth.uid() lee primero request.jwt.claim.sub y, si está vacío,
+  -- request.jwt.claims. Se fijan ambos para que no influya ningún valor
+  -- previo de la sesión.
   perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  perform set_config('request.jwt.claim.sub', '', true);
   set local role anon;
 
   begin
@@ -158,6 +162,7 @@ begin
   -- ===================================== 3. Autenticada pero NO autorizada
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_unauthorized, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claim.sub', v_unauthorized::text, true);
   set local role authenticated;
 
   v_bool := private.is_authorized();
@@ -187,6 +192,7 @@ begin
   -- =========================================================== 4. Autorizada
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_authorized, 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claim.sub', v_authorized::text, true);
   set local role authenticated;
 
   v_bool := private.is_authorized();
@@ -218,6 +224,7 @@ begin
 
   reset role;
   perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claim.sub', '', true);
 
   insert into pg_temp.rls_check_results (n, grupo, comprobacion, resultado)
   select i, split_part(r[i], '|', 1), split_part(r[i], '|', 2), split_part(r[i], '|', 3)
