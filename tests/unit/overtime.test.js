@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   OVERTIME_COLUMNS,
+  buildOvertimeShareText,
+  formatSharePeriod,
   OVERTIME_SUMMARY_VIEWS,
   formatSummaryTitle,
   getSummaryRange,
@@ -562,6 +564,102 @@ describe('resumen por empleado', () => {
       expect(filters).toEqual({ employeeId: 'alvaro', from: '2026-12-01', to: '2026-12-31' })
       expect(filterOvertimeEntries(data, filters).map(x => x.id)).toEqual(['8'])
     })
+  })
+})
+
+describe('mensaje para compartir', () => {
+  const W = OVERTIME_PERIOD.WEEK
+  const M = OVERTIME_PERIOD.MONTH
+  const staff = [
+    { id: 'ana', first_name: 'Ana', last_name: 'López', is_active: true },
+    { id: 'alvaro', first_name: 'Álvaro', last_name: 'Pérez', is_active: true },
+    { id: 'lucia', first_name: 'Lucía', last_name: 'Núñez', is_active: false },
+    { id: 'marta', first_name: 'Marta', last_name: 'Ortega', is_active: true },
+  ]
+  const e = (id, employee_id, work_date, duration_minutes) => entry(id, employee_id, work_date, duration_minutes, {
+    employee: staff.find(s => s.id === employee_id),
+  })
+  const data = [
+    e('1', 'ana', '2026-10-26', 90),
+    e('2', 'ana', '2026-10-28', 45),
+    e('3', 'ana', '2026-11-01', 20),
+    e('4', 'lucia', '2026-10-27', 95),
+    e('5', 'alvaro', '2026-10-25', 60),
+    e('6', 'alvaro', '2026-10-01', 30),
+  ]
+  const share = (view, anchor, list = data) => {
+    const range = getSummaryRange(view, anchor)
+    const summary = summarizeOvertimeByEmployee(list, staff, range)
+    return { text: buildOvertimeShareText(view, range, summary), summary }
+  }
+
+  it('semanal: encabezado con las fechas, una línea por empleado con horas y total', () => {
+    expect(share(W, '2026-10-28').text).toBe([
+      'Resumen de horas extra',
+      'Semana del 26 de octubre al 1 de noviembre de 2026 (de lunes a domingo)',
+      '',
+      '- Ana López: 2 h 35 min',
+      '- Lucía Núñez (inactivo): 1 h 35 min',
+      '',
+      'Total de la semana: 4 h 10 min',
+    ].join('\n'))
+  })
+
+  it('mensual: mes y año, y total del mes', () => {
+    expect(share(M, '2026-10-05').text).toBe([
+      'Resumen de horas extra',
+      'Mes de octubre de 2026',
+      '',
+      '- Álvaro Pérez: 1 h 30 min',
+      '- Ana López: 2 h 15 min',
+      '- Lucía Núñez (inactivo): 1 h 35 min',
+      '',
+      'Total del mes: 5 h 20 min',
+    ].join('\n'))
+  })
+
+  it('no incluye a los empleados sin registros aunque aparezcan a 0 en pantalla', () => {
+    const { text, summary } = share(W, '2026-10-28')
+    expect(summary.rows.find(r => r.id === 'marta').minutes).toBe(0)
+    expect(summary.rows.find(r => r.id === 'alvaro').minutes).toBe(0)
+    expect(text).not.toMatch(/Marta|Álvaro/)
+  })
+
+  it('usa exactamente los minutos y el total del resumen de la pantalla', () => {
+    const { text, summary } = share(M, '2026-10-05')
+    for (const row of summary.rows.filter(r => r.count)) {
+      expect(text).toContain(`${row.name}${row.isActive ? '' : ' (inactivo)'}: ${formatDuration(row.minutes)}`)
+    }
+    expect(text.endsWith(formatDuration(summary.totalMinutes))).toBe(true)
+  })
+
+  it('suma exacta sin redondeos, también por encima de 24 horas', () => {
+    const many = Array.from({ length: 13 }, (_, i) => e(`x${i}`, 'ana', '2026-10-28', 119))
+    const { text } = share(W, '2026-10-28', many)
+    expect(text).toContain('- Ana López: 25 h 47 min') // 13 × 119 = 1547 min
+    expect(text).toContain('Total de la semana: 25 h 47 min')
+  })
+
+  it('periodo sin registros: no se genera mensaje', () => {
+    expect(share(W, '2026-06-10').text).toBeNull()
+    expect(share(M, '2025-01-01').text).toBeNull()
+    expect(buildOvertimeShareText(W, null, { entryCount: 3, rows: [] })).toBeNull()
+  })
+
+  it('al cambiar de periodo, el texto cambia con él', () => {
+    const current = share(W, '2026-10-28').text
+    const previous = share(W, shiftSummaryAnchor(W, '2026-10-28', -1)).text
+    expect(previous).toContain('Semana del 19 al 25 de octubre de 2026')
+    expect(previous).toContain('- Álvaro Pérez: 1 h')
+    expect(previous).not.toBe(current)
+  })
+
+  it('formato del periodo: mismo mes, distinto mes y cambio de año', () => {
+    expect(formatSharePeriod(W, getSummaryRange(W, '2026-09-10'))).toBe('Semana del 7 al 13 de septiembre de 2026 (de lunes a domingo)')
+    expect(formatSharePeriod(W, getSummaryRange(W, '2026-10-28'))).toBe('Semana del 26 de octubre al 1 de noviembre de 2026 (de lunes a domingo)')
+    expect(formatSharePeriod(W, getSummaryRange(W, '2026-12-31'))).toBe('Semana del 28 de diciembre de 2026 al 3 de enero de 2027 (de lunes a domingo)')
+    expect(formatSharePeriod(M, getSummaryRange(M, '2027-01-15'))).toBe('Mes de enero de 2027')
+    expect(formatSharePeriod(M, getSummaryRange(M, '2028-02-15'))).toBe('Mes de febrero de 2028')
   })
 })
 

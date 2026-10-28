@@ -380,6 +380,59 @@ export function summarizeOvertimeByEmployee(entries, employees, range) {
   }
 }
 
+// ------------------------------------------------ Mensaje para compartir
+
+const longDayMonthFormatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' })
+
+/**
+ * Periodo del mensaje con el mes escrito entero:
+ * «Semana del 26 de octubre al 1 de noviembre de 2026 (de lunes a domingo)»,
+ * «Semana del 7 al 13 de septiembre de 2026 (de lunes a domingo)»,
+ * «Mes de octubre de 2026».
+ */
+export function formatSharePeriod(view, range) {
+  if (!range) return ''
+  if (view === OVERTIME_PERIOD.MONTH) {
+    return `Mes de ${monthYearFormatter.format(new Date(`${range.from}T00:00:00Z`))}`
+  }
+  const from = new Date(`${range.from}T00:00:00Z`)
+  const to = new Date(`${range.to}T00:00:00Z`)
+  const toText = `${longDayMonthFormatter.format(to)} de ${range.to.slice(0, 4)}`
+  let fromText = `${longDayMonthFormatter.format(from)} de ${range.from.slice(0, 4)}`
+  if (range.from.slice(0, 7) === range.to.slice(0, 7)) fromText = String(from.getUTCDate())
+  else if (range.from.slice(0, 4) === range.to.slice(0, 4)) fromText = longDayMonthFormatter.format(from)
+  return `Semana del ${fromText} al ${toText} (de lunes a domingo)`
+}
+
+/**
+ * Texto para enviar al responsable de zona (WhatsApp, correo…), a partir del
+ * resultado de summarizeOvertimeByEmployee: mismas filas, mismo orden y los
+ * mismos minutos enteros que se ven en pantalla.
+ *
+ * - Solo los empleados con registros en el periodo (los que están a 0 no salen).
+ * - Los inactivos con registros se mantienen y se marcan «(inactivo)».
+ * - Total general al final.
+ *
+ * @returns {string | null} null si el periodo no tiene registros: no se
+ *   genera un mensaje vacío.
+ */
+export function buildOvertimeShareText(view, range, summary) {
+  if (!range || !summary?.entryCount) return null
+
+  const lines = summary.rows
+    .filter(row => row.count > 0)
+    .map(row => `- ${row.name}${row.isActive ? '' : ' (inactivo)'}: ${formatDuration(row.minutes)}`)
+
+  return [
+    'Resumen de horas extra',
+    formatSharePeriod(view, range),
+    '',
+    ...lines,
+    '',
+    `Total ${view === OVERTIME_PERIOD.MONTH ? 'del mes' : 'de la semana'}: ${formatDuration(summary.totalMinutes)}`,
+  ].join('\n')
+}
+
 // ------------------------------------------------ Filtros, totales y orden
 
 /**
