@@ -82,24 +82,73 @@ Crea lo siguiente:
 - **RLS de `profiles`:** cada cuenta solo puede leer su propia fila. Ningún cliente puede insertar, modificar ni borrar filas.
 - **Trigger** que mantiene `updated_at`.
 
+### Antes de empezar (SQL Editor)
+
+- **Rol `postgres`:** en el SQL Editor, el selector **Role** (junto al botón *Run*) debe estar en **`postgres`**, sin suplantar a ninguna usuaria. Es necesario en las secciones 5, 6 y 7.1.
+  - La migración y las altas en `profiles` solo puede hacerlas `postgres`.
+  - Con otro rol, la migración falla sin aplicar nada y las comprobaciones dan resultados engañosos.
+- **Una consulta cada vez:** el SQL Editor muestra solo el resultado de la **última** sentencia. Las consultas de verificación de esta guía se ejecutan **una a una**: pega una, ejecútala, mira el resultado y pasa a la siguiente. Las excepciones son la migración (paso 3 de la opción A) y el script de la sección 7.1, que se ejecutan enteros de una vez.
+
+**Comprobación previa:** confirma que ni el esquema `private` ni la tabla `profiles` existen todavía.
+
+```sql
+select to_regnamespace('private') as esquema_private,
+       to_regclass('public.profiles') as tabla_profiles;
+```
+
+- **Ambas columnas vacías (`NULL`):** se puede aplicar la migración.
+- **Alguna con valor:** **no apliques la migración.**
+  - Puede que ya esté aplicada (comprueba los pasos de verificación de la opción A) o que exista un esquema `private` creado para otra cosa.
+  - Revisa qué contiene antes de seguir y no borres nada sin entenderlo.
+
 ### Opción A — SQL Editor del panel (recomendada por ahora)
 
-1. Abre **SQL Editor → New query**.
+1. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en `postgres`.
 2. Escribe `begin;` en la primera línea.
 3. Pega debajo el contenido completo del archivo de migración.
 4. Escribe `commit;` en la última línea.
-5. Ejecuta (*Run*). Si aparece algún error, nada se habrá aplicado: la transacción se revierte entera. Copia el error y revisa antes de repetir.
-6. Comprueba el resultado con esta consulta. Deben aparecer `profiles` con `rls = true`, la política `profiles_select_own` y las funciones `is_authorized` y `set_updated_at`:
+5. Ejecuta (*Run*) una sola vez. Lo esperado es «Success. No rows returned».
+6. Verifica el resultado con estas tres consultas, **una a una**:
 
    ```sql
    select c.relname, c.relrowsecurity as rls
    from pg_class c where c.oid = 'public.profiles'::regclass;
+   ```
+   Esperado: una fila `profiles` con `rls = true`.
 
+   ```sql
    select policyname, cmd, roles from pg_policies where tablename = 'profiles';
+   ```
+   Esperado: una sola fila, `profiles_select_own` · `SELECT` · `{authenticated}`.
 
+   ```sql
    select proname, prosecdef as security_definer, proconfig
    from pg_proc where pronamespace = 'private'::regnamespace;
    ```
+   Esperado: dos filas.
+   - `is_authorized`, con `security_definer = true`.
+   - `set_updated_at`, con `security_definer = false`.
+   - Las dos con `proconfig = {"search_path=\"\""}`.
+
+### Si la migración da un error
+
+La migración está envuelta en `begin;` … `commit;`. Si una sentencia falla, PostgreSQL anula la transacción entera y **no se aplica nada**. Antes de reintentar, compruébalo:
+
+1. Copia el mensaje de error completo y **no** vuelvas a ejecutar la migración todavía.
+2. En una consulta nueva, con el rol `postgres`, ejecuta:
+
+   ```sql
+   select to_regnamespace('private') as esquema_private,
+          to_regclass('public.profiles') as tabla_profiles;
+   ```
+
+   Si en lugar de un resultado aparece el error *current transaction is aborted*, ejecuta `rollback;` sola y repite esta consulta.
+
+3. Interpreta el resultado:
+   - **Ambas columnas vacías (`NULL`):** no ha quedado nada aplicado. Corrige la causa del error y repite la opción A desde el paso 1.
+   - **Alguna con valor:** se ha aplicado una parte. Esto no debería ocurrir con `begin;`/`commit;`.
+     - No reintentes la migración ni borres nada a mano.
+     - Revisa el estado con las tres consultas del paso 6 antes de decidir.
 
 Si después empiezas a usar la CLI de Supabase, marca esta migración como ya aplicada para que `db push` no intente repetirla: `npx supabase migration repair --status applied 20261028095000`.
 
