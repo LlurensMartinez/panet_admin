@@ -8,7 +8,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run"
   },
   "engines": {
     "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.17.0",
-    "eslint": "^10.13.0"
+    "eslint": "^10.13.0",
+    "vitest": "^5.0.5"
   }
 }
