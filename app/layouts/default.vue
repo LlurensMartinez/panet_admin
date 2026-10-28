@@ -7,6 +7,8 @@ const user = useSupabaseUser()
 
 const NAV_ITEMS = [
   { label: 'Inicio', to: '/', icon: 'i-lucide-house', exact: true },
+  // Incluye las subpáginas /pedidos/proveedores y /pedidos/festivos.
+  { label: 'Pedidos', to: '/pedidos', icon: 'i-lucide-clipboard-list' },
   { label: 'Empleados', to: '/empleados', icon: 'i-lucide-users-round' },
   { label: 'Horas extra', to: '/horas-extra', icon: 'i-lucide-clock' },
 ]
