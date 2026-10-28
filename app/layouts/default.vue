@@ -8,6 +8,7 @@ const user = useSupabaseUser()
 const NAV_ITEMS = [
   { label: 'Inicio', to: '/', icon: 'i-lucide-house', exact: true },
   { label: 'Empleados', to: '/empleados', icon: 'i-lucide-users-round' },
+  { label: 'Horas extra', to: '/horas-extra', icon: 'i-lucide-clock' },
 ]
 
 function isCurrent(item) {
