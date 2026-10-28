@@ -23,7 +23,7 @@
 - Configurar proyecto Supabase. *(Hecho: proyecto creado y variables configuradas en local.)*
 - Crear la tabla `profiles`. *(Migración preparada: `supabase/migrations/20261028095000_profiles_authorization.sql`, pendiente de aplicar en el proyecto remoto. Es la lista de cuentas autorizadas: opción A de `DATA_MODEL.md`.)*
 - Implementar inicio/cierre de sesión. *(Hecho.)*
-- Configurar protección de rutas. *(Hecho en el frontend; no sustituye a RLS.)*
+- Configurar protección de rutas. *(Hecho en el frontend: exige sesión y que la cuenta esté en `profiles`; si no, `/acceso-denegado`. No sustituye a RLS.)*
 - Añadir políticas RLS y probar acceso no autorizado. *(RLS de `profiles` y función `private.is_authorized()` preparadas. Pruebas en `supabase/tests/authorization_checks.sql`, pendientes de ejecutar en el proyecto remoto.)*
 
 **Aceptación:** la encargada puede acceder y las rutas/datos privados están protegidos. Para darla por cumplida:

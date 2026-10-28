@@ -29,6 +29,7 @@ npm run build     # compilación de producción
 npm run preview   # sirve la compilación de producción en local
 npm run lint      # comprobación de calidad y estilo
 npm run lint:fix  # corrige automáticamente lo que se pueda
+npm test          # pruebas unitarias (Vitest)
 ```
 
 ## Estructura
@@ -40,13 +41,16 @@ app/
   assets/css/main.css        # importa Tailwind CSS y Nuxt UI
   layouts/default.vue        # cabecera de las páginas privadas
   components/LogoutButton.vue
-  middleware/auth.global.js  # exige sesión verificada salvo en /login
+  composables/useAuthorization.js  # comprueba si la cuenta está en public.profiles
+  middleware/auth.global.js  # exige sesión verificada y cuenta autorizada salvo en /login
   pages/login.vue            # inicio de sesión (sin registro)
+  pages/acceso-denegado.vue  # cuenta con sesión pero sin autorización
   pages/index.vue            # página privada provisional
-  utils/                     # mensajes de error de acceso y redirección segura
+  utils/                     # autorización, mensajes de error de acceso y redirección segura
 supabase/
   migrations/                # migraciones SQL versionadas (se aplican a mano: ver SUPABASE_SETUP.md)
   tests/                     # comprobaciones SQL de autorización y RLS
+tests/unit/                  # pruebas unitarias (npm test)
 nuxt.config.js
 eslint.config.mjs
 ```

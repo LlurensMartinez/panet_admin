@@ -9,6 +9,7 @@ Guía de configuración de la Fase 1 (acceso privado y autorización). Complemen
 - Integración con el módulo oficial de Nuxt [`@nuxtjs/supabase`](https://supabase.nuxtjs.org) v2, que usa `@supabase/ssr` (sesión en cookies, compatible con SSR).
 - Inicio de sesión con correo y contraseña en `/login`. **No hay registro público** en la aplicación.
 - Todas las páginas, excepto `/login`, exigen una usuaria **verificada** (`app/middleware/auth.global.js`). Se comprueban los *claims* del JWT validados por Supabase, no solo que exista una cookie.
+- Además, la cuenta debe estar en `public.profiles`. Si no lo está, solo puede ver `/acceso-denegado` (sección 7.4).
 - Botón **Cerrar sesión** en la cabecera. Cierra solo la sesión de ese dispositivo.
 - Proyecto de Supabase creado y variables configuradas en local.
 - **Preparado, pendiente de aplicar en el proyecto remoto:**
@@ -227,9 +228,37 @@ Cuando termines las pruebas, puedes eliminar la segunda cuenta desde *Authentica
 ### 7.3 Lo que estas pruebas no cubren todavía
 
 - **Tablas de negocio:** aún no existen. Cada tabla nueva necesita sus propias políticas y comprobaciones (sección 8).
-- **La interfaz:**
-  - Una cuenta autenticada pero **no autorizada** puede iniciar sesión en la app y ver la página privada provisional, aunque no pueda leer ni escribir datos protegidos.
-  - Sería recomendable que la app consulte `profiles` tras el login y muestre «Cuenta sin autorización». Está pendiente de decidir; no se ha implementado en esta fase.
+- **La interfaz:** ver la sección 7.4. La app ya comprueba `profiles`, pero esa comprobación es solo de interfaz; la protección de los datos sigue siendo RLS.
+
+### 7.4 Control de acceso en la aplicación
+
+Después de iniciar sesión, la app consulta `public.profiles` con la sesión de la usuaria: `supabase.from('profiles').select('id').eq('id', <uuid>).maybeSingle()`. Usa la clave publicable y el JWT, nunca una clave secreta. La política `profiles_select_own` solo devuelve la propia fila, si existe.
+
+| Resultado de la consulta | Qué ve la usuaria |
+| --- | --- |
+| Devuelve su fila | Las páginas privadas. |
+| No devuelve fila | `/acceso-denegado`: mensaje de cuenta sin autorización, botón «Comprobar de nuevo» y «Cerrar sesión». No puede abrir ninguna otra página privada. |
+| 401 / JWT rechazado | Se cierra la sesión local y vuelve a `/login` con el aviso «Tu sesión ha caducado». |
+| Sin conexión, 5xx o error desconocido | Página de error 503 «No se ha podido comprobar el acceso», con «Reintentar» (recarga completa) y «Cerrar sesión». **No** se trata como «no autorizada» ni da acceso. |
+| La tabla no existe o faltan permisos (migración sin aplicar) | Página de error 503 «Falta preparar la base de datos». |
+
+Otros detalles del funcionamiento:
+- **Por defecto se deniega:** cualquier resultado no reconocido deniega el acceso.
+- **Caché:** los resultados «autorizada» y «no autorizada» se guardan mientras dura la sesión en la página. Cada carga completa vuelve a consultar en el servidor. Los errores no se guardan.
+- **Bucles:** los evitan las reglas de `app/utils/authorization.js`, cubiertas por pruebas unitarias (`npm test`).
+- **Código:**
+  - `app/middleware/auth.global.js`
+  - `app/composables/useAuthorization.js`
+  - `app/utils/authorization.js`
+  - `app/pages/acceso-denegado.vue`
+  - `app/error.vue`
+
+**Importante:** mientras la migración no esté aplicada, cualquier cuenta que inicie sesión verá «Falta preparar la base de datos». Es el comportamiento esperado: sin la lista de cuentas autorizadas no se concede acceso.
+
+Para comprobarlo en el proyecto real, después de las secciones 5 y 6:
+1. Inicia sesión con la cuenta autorizada: debe verse la página privada.
+2. Inicia sesión con la segunda cuenta, que no está en `profiles`: debe verse «Acceso no autorizado». Al escribir `/` en la barra de direcciones debe volver a esa página.
+3. Con la segunda cuenta, añádela temporalmente a `profiles` y pulsa «Comprobar de nuevo»: debe entrar. Después retírala.
 
 ## 8. Regla para las tablas de negocio (fases 2 a 5)
 
