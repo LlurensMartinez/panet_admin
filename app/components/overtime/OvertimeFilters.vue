@@ -1,15 +1,12 @@
 <script setup>
-// Filtros del listado: empleado y periodo (fechas de trabajo, ambos extremos
-// incluidos). Incluye a los empleados inactivos: su historial sigue visible.
+// Filtros del listado de registros: empleado y fechas de trabajo (ambos
+// extremos incluidos). Incluye a los empleados inactivos: su historial sigue
+// visible.
 //
-// Periodo:
-// - Un periodo rápido (Hoy, Semanal, Mensual, Anual) rellena «Desde» y
-//   «Hasta» con sus fechas (app/utils/overtime.js, getPeriodRange), así que
-//   siempre se ve qué fechas se están filtrando.
-// - Cambiar a mano cualquiera de las dos fechas pasa a «Personalizado».
-// - Elegir «Personalizado» conserva las fechas que haya para ajustarlas.
+// Fechas: una fecha vacía no limita. Solo «Desde» = desde ese día en
+// adelante; solo «Hasta» = hasta ese día inclusive; ninguna = todas.
+// Los totales por semana o por mes están en la pestaña «Resumen por empleado».
 const employeeId = defineModel('employeeId', { type: String, default: undefined })
-const period = defineModel('period', { type: String, default: null })
 const from = defineModel('from', { type: String, default: '' })
 const to = defineModel('to', { type: String, default: '' })
 
@@ -29,26 +26,7 @@ const employeeItems = computed(() => sortEmployees(props.employees).map(employee
   description: employee.is_active ? (employee.role ?? undefined) : 'Inactivo',
 })))
 
-const hasFilters = computed(() => Boolean(employeeId.value || period.value || from.value || to.value))
-
-// Selector de periodo: «hoy» se calcula en el momento de elegir, en la zona
-// horaria de la tienda.
-const selectedPeriod = computed({
-  get: () => period.value,
-  set: (value) => {
-    const next = selectOvertimePeriod(value, { from: from.value, to: to.value })
-    period.value = next.period
-    from.value = next.from
-    to.value = next.to
-  },
-})
-
-// Fechas escritas a mano: el filtro pasa a «Personalizado».
-function setDate(field, value) {
-  const model = field === 'from' ? from : to
-  model.value = value ?? ''
-  period.value = OVERTIME_PERIOD.CUSTOM
-}
+const hasFilters = computed(() => Boolean(employeeId.value || from.value || to.value))
 </script>
 
 <template>
@@ -57,10 +35,10 @@ function setDate(field, value) {
     aria-label="Filtrar registros"
     class="space-y-2"
   >
-    <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,18rem)_10.5rem_10.5rem_auto] lg:items-end">
       <UFormField
         label="Empleado"
-        class="lg:w-56"
+        class="col-span-2 lg:col-span-1"
       >
         <USelectMenu
           v-model="employeeId"
@@ -80,49 +58,41 @@ function setDate(field, value) {
         </USelectMenu>
       </UFormField>
 
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <OvertimePeriodSelect
-          v-model="selectedPeriod"
+      <UFormField
+        label="Desde"
+        :error="Boolean(rangeError)"
+        class="min-w-0"
+      >
+        <UInput
+          v-model="from"
+          type="date"
+          size="lg"
+          class="w-full"
           :disabled="disabled"
+          :aria-describedby="rangeError ? rangeErrorId : undefined"
         />
+      </UFormField>
 
-        <div class="grid grid-cols-2 gap-3 sm:flex">
-          <UFormField
-            label="Desde"
-            :error="Boolean(rangeError)"
-            class="sm:w-36"
-          >
-            <UInput
-              :model-value="from"
-              type="date"
-              size="lg"
-              class="w-full"
-              :disabled="disabled"
-              :aria-describedby="rangeError ? rangeErrorId : undefined"
-              @update:model-value="setDate('from', $event)"
-            />
-          </UFormField>
+      <UFormField
+        label="Hasta"
+        :error="Boolean(rangeError)"
+        class="min-w-0"
+      >
+        <UInput
+          v-model="to"
+          type="date"
+          size="lg"
+          class="w-full"
+          :min="from || undefined"
+          :disabled="disabled"
+          :aria-describedby="rangeError ? rangeErrorId : undefined"
+        />
+      </UFormField>
 
-          <UFormField
-            label="Hasta"
-            :error="Boolean(rangeError)"
-            class="sm:w-36"
-          >
-            <UInput
-              :model-value="to"
-              type="date"
-              size="lg"
-              class="w-full"
-              :min="from || undefined"
-              :disabled="disabled"
-              :aria-describedby="rangeError ? rangeErrorId : undefined"
-              @update:model-value="setDate('to', $event)"
-            />
-          </UFormField>
-        </div>
-      </div>
-
-      <div v-if="hasFilters">
+      <div
+        v-if="hasFilters"
+        class="col-span-2 lg:col-span-1"
+      >
         <UButton
           label="Limpiar filtros"
           icon="i-lucide-filter-x"

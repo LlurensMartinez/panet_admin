@@ -59,13 +59,12 @@ watch(activeTab, (tab) => {
 const summaryView = ref(OVERTIME_PERIOD.WEEK)
 const summaryAnchor = ref(today.value)
 
-// «Ver registros» desde el resumen: lleva al listado con ese empleado y ese
-// periodo (si coincide con un periodo rápido, se marca; si no, Personalizado).
+// «Ver registros» desde el resumen: lleva al listado con ese empleado y las
+// fechas de esa semana o ese mes en «Desde» y «Hasta».
 async function showRecordsFor({ employeeId, from, to }) {
   filters.employeeId = employeeId
   filters.from = from
   filters.to = to
-  filters.period = detectOvertimePeriod({ from, to }, getTodayDate())
   activeTab.value = 'records'
   await nextTick()
   await nextTick()
@@ -73,11 +72,12 @@ async function showRecordsFor({ employeeId, from, to }) {
 }
 
 // ----------------------------------------------------------------- Filtros
-// period: periodo rápido elegido (OVERTIME_PERIOD) o null = todas las fechas.
-// El listado se filtra siempre por from/to, que el periodo rellena.
-const filters = reactive({ employeeId: undefined, period: null, from: '', to: '' })
+// Empleado y fechas de trabajo (ambos extremos incluidos). Una fecha vacía no
+// limita: solo «Desde» = desde ese día en adelante; solo «Hasta» = hasta ese
+// día inclusive; ninguna = todas las fechas.
+const filters = reactive({ employeeId: undefined, from: '', to: '' })
 const rangeError = computed(() => validateDateRange(filters))
-const hasFilters = computed(() => Boolean(filters.employeeId || filters.period || filters.from || filters.to))
+const hasFilters = computed(() => Boolean(filters.employeeId || filters.from || filters.to))
 
 const visibleEntries = computed(() => rangeError.value
   ? []
@@ -92,7 +92,6 @@ const scopeText = computed(() => describeOvertimeFilters({ employeeName: filterE
 
 function clearFilters() {
   filters.employeeId = undefined
-  filters.period = null
   filters.from = ''
   filters.to = ''
 }
@@ -288,7 +287,6 @@ async function confirmDelete() {
 
           <OvertimeFilters
             v-model:employee-id="filters.employeeId"
-            v-model:period="filters.period"
             v-model:from="filters.from"
             v-model:to="filters.to"
             :employees="employees"
