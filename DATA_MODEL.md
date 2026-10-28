@@ -139,6 +139,47 @@ Esta tabla representa horarios habituales, no un sistema completo de turnos publ
 - Antes de desplegar, probar expresamente que un usuario no autenticado no puede leer ni modificar registros.
 - Si el proyecto usa una única cuenta autorizada, limitar el acceso mediante políticas explícitas a esa identidad, sin políticas abiertas a cualquier usuario autenticado.
 
+### Modelo de autorización (decidido)
+
+Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar autenticado no basta: la cuenta debe tener fila en `profiles`.
+
+- **`private.is_authorized()`** devuelve `true` si `auth.uid()` tiene fila en `profiles`.
+  - Es `SECURITY DEFINER`, con `search_path` vacío, sin parámetros y con propietario `postgres`.
+  - `EXECUTE` solo para `authenticated`.
+  - Vive en el esquema `private`, que no se expone en la Data API. En él solo el propietario puede crear o modificar objetos.
+- **`profiles`**:
+  - Tiene RLS activo y una única política: `profiles_select_own` (`SELECT`, cada cuenta solo ve su propia fila).
+  - `authenticated` solo tiene el privilegio `SELECT` y `anon` no tiene ninguno.
+  - No hay políticas de `INSERT`, `UPDATE` ni `DELETE`, así que ningún cliente puede añadirse, modificarse ni retirarse.
+- **Altas y bajas de autorización:** se hacen a mano desde el SQL Editor de Supabase (rol `postgres`). Ver `SUPABASE_SETUP.md`.
+
+### Regla para cada tabla de negocio
+
+Toda tabla nueva del esquema `public` debe incluir, **en la misma migración que la crea**:
+
+```sql
+alter table public.<tabla> enable row level security;
+-- Supabase concede por defecto todos los privilegios (incluido TRUNCATE, que
+-- no respeta RLS). Se retiran y se concede solo lo necesario.
+revoke all on table public.<tabla> from anon, authenticated;
+grant select, insert, update on table public.<tabla> to authenticated;
+
+create policy "<tabla>_select_authorized" on public.<tabla>
+  for select to authenticated using ((select private.is_authorized()));
+create policy "<tabla>_insert_authorized" on public.<tabla>
+  for insert to authenticated with check ((select private.is_authorized()));
+create policy "<tabla>_update_authorized" on public.<tabla>
+  for update to authenticated
+  using ((select private.is_authorized()))
+  with check ((select private.is_authorized()));
+-- DELETE solo si la tabla permite borrado físico (ver decisión pendiente 4);
+-- en las entidades con historial se usa is_active.
+```
+
+También hay que ampliar `supabase/tests/authorization_checks.sql` con las comprobaciones de la tabla nueva: sin sesión, sesión no autorizada y sesión autorizada.
+
+Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.role() = 'authenticated'`.
+
 ## Índices recomendados
 
 - `overtime_entries(employee_id, work_date)`
@@ -152,5 +193,5 @@ Esta tabla representa horarios habituales, no un sistema completo de turnos publ
 
 1. Confirmar cómo se representará el horario habitual: uno o varios intervalos por día.
 2. Confirmar si se pueden registrar dos pedidos del mismo proveedor en una fecha, o si debe haber solo uno.
-3. Elegir la forma de restringir RLS al usuario autorizado.
+3. ~~Elegir la forma de restringir RLS al usuario autorizado.~~ **Decidido:** opción A, tabla `profiles` y función `private.is_authorized()` (ver *Modelo de autorización*).
 4. Decidir si los productos/proveedores se desactivan siempre o si se permite borrarlos cuando no tienen historial.
