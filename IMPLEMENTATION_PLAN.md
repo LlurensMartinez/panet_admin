@@ -21,21 +21,23 @@
 
 ## Fase 1 — Supabase y acceso privado
 - Configurar proyecto Supabase. *(Hecho: proyecto creado y variables configuradas en local.)*
-- Crear la tabla `profiles`. *(Migración preparada: `supabase/migrations/20261028095000_profiles_authorization.sql`, pendiente de aplicar en el proyecto remoto. Es la lista de cuentas autorizadas: opción A de `DATA_MODEL.md`.)*
+- Crear la tabla `profiles`. *(Hecho: `supabase/migrations/20261028095000_profiles_authorization.sql`, aplicada en el proyecto remoto y con la cuenta de la encargada autorizada. Es la lista de cuentas autorizadas: opción A de `DATA_MODEL.md`.)*
 - Implementar inicio/cierre de sesión. *(Hecho.)*
 - Configurar protección de rutas. *(Hecho en el frontend: exige sesión y que la cuenta esté en `profiles`; si no, `/acceso-denegado`. No sustituye a RLS.)*
-- Añadir políticas RLS y probar acceso no autorizado. *(RLS de `profiles` y función `private.is_authorized()` preparadas. Pruebas en `supabase/tests/authorization_checks.sql`, pendientes de ejecutar en el proyecto remoto.)*
+- Añadir políticas RLS y probar acceso no autorizado. *(Hecho: RLS de `profiles` y función `private.is_authorized()` aplicadas. `supabase/tests/authorization_checks.sql` ejecutado en el proyecto remoto: 31 filas correctas (30 `OK` + 1 `INFO`). Probado en la app: la cuenta autorizada entra y una segunda cuenta no autorizada queda bloqueada.)*
 
 **Aceptación:** la encargada puede acceder y las rutas/datos privados están protegidos. Para darla por cumplida:
-- la migración está aplicada;
-- la cuenta de la encargada está en `profiles`;
-- `authorization_checks.sql` devuelve todo `OK` en el proyecto real;
-- las pruebas por API de `SUPABASE_SETUP.md` (sin sesión y con una segunda cuenta no autorizada) dan el resultado esperado.
+- la migración está aplicada *(hecho)*;
+- la cuenta de la encargada está en `profiles` *(hecho)*;
+- `authorization_checks.sql` devuelve todo `OK` en el proyecto real *(hecho)*;
+- las pruebas por API de `SUPABASE_SETUP.md`, sección 7.2 (sin sesión y con una segunda cuenta no autorizada), dan el resultado esperado *(pendiente de confirmar)*.
 
-**Regla para las fases 2 a 5:** cada migración que cree una tabla de negocio debe incluir, en el mismo archivo, RLS y políticas basadas en `private.is_authorized()` (plantilla en `DATA_MODEL.md`). Además, hay que ampliar las comprobaciones de `supabase/tests/authorization_checks.sql` para esa tabla.
+**Estado:** completada, salvo la confirmación de las pruebas por API de la sección 7.2.
+
+**Regla para las fases 2 a 5:** cada migración que cree una tabla de negocio debe incluir, en el mismo archivo, RLS y políticas basadas en `private.is_authorized()` (plantilla en `DATA_MODEL.md`). Además, cada migración tiene su propio script de comprobaciones en `supabase/tests/` (por ejemplo, `staff_rls_checks.sql`); `authorization_checks.sql` no se amplía.
 
 ## Fase 2 — Personal y horas extra
-- Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`.
+- Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`. *(Migración preparada: `supabase/migrations/20261028125000_employees_overtime.sql`, con sus comprobaciones en `supabase/tests/staff_rls_checks.sql`. Verificada en un PostgreSQL local que imita Supabase; **pendiente de aplicar y comprobar en el proyecto remoto** (`SUPABASE_SETUP.md`, sección 9).)*
 - Crear listado y formulario de trabajadoras.
 - Crear formulario móvil para registrar horas extra.
 - Crear historial individual y general.

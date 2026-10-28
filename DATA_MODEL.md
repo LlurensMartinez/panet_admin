@@ -1,6 +1,9 @@
 # Modelo de datos — Gestión de tienda MVP
 
-**Estado:** propuesta inicial; revisar antes de aplicar migraciones en producción.
+**Estado:**
+- `profiles`: implementada y aplicada en el proyecto de Supabase (Fase 1).
+- `employees` y `overtime_entries`: implementadas en una migración preparada, pendiente de aplicar en el proyecto remoto (Fase 2).
+- Resto de tablas: propuesta inicial; revisar antes de crear sus migraciones.
 
 ## Convenciones
 

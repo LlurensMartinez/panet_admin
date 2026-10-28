@@ -1,6 +1,6 @@
 # Supabase y acceso privado
 
-Guía de configuración de la Fase 1 (acceso privado y autorización). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
+Guía de configuración de Supabase: acceso privado y autorización (Fase 1, secciones 1 a 8) y tablas de trabajadoras y horas extra (Fase 2, sección 9). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
 
 > Los nombres de las opciones del panel de Supabase pueden cambiar ligeramente con el tiempo. Si alguno no coincide, busca el equivalente en *Authentication*.
 
@@ -12,10 +12,16 @@ Guía de configuración de la Fase 1 (acceso privado y autorización). Complemen
 - Además, la cuenta debe estar en `public.profiles`. Si no lo está, solo puede ver `/acceso-denegado` (sección 7.4).
 - Botón **Cerrar sesión** en la cabecera. Cierra solo la sesión de ese dispositivo.
 - Proyecto de Supabase creado y variables configuradas en local.
-- **Preparado, pendiente de aplicar en el proyecto remoto:**
-  - Migración `supabase/migrations/20261028095000_profiles_authorization.sql`. Crea `public.profiles` (lista de cuentas autorizadas), `private.is_authorized()` y la RLS de `profiles`.
-  - Script de comprobación `supabase/tests/authorization_checks.sql`.
-- Secciones 5 a 8 de esta guía.
+- **Fase 1, aplicada en el proyecto remoto:**
+  - Migración `supabase/migrations/20261028095000_profiles_authorization.sql`: crea `public.profiles` (lista de cuentas autorizadas), `private.is_authorized()` y la RLS de `profiles`.
+  - Cuenta de la encargada autorizada (sección 6).
+  - `supabase/tests/authorization_checks.sql` ejecutado: 31 filas correctas (sección 7.1).
+  - El esquema `private` no está expuesto en la Data API.
+  - Probado en la app: la cuenta autorizada entra y una segunda cuenta no autorizada queda bloqueada (sección 7.4).
+  - **Pendiente de confirmar:** las pruebas por API de la sección 7.2.
+- **Fase 2, preparada y pendiente de aplicar en el proyecto remoto** (sección 9):
+  - Migración `supabase/migrations/20261028125000_employees_overtime.sql`: crea `public.employees` y `public.overtime_entries` con su RLS.
+  - Script de comprobación `supabase/tests/staff_rls_checks.sql`.
 
 Sin `NUXT_PUBLIC_SUPABASE_URL` y `NUXT_PUBLIC_SUPABASE_KEY`, la aplicación compila, pero todas las páginas muestran el error 500 *«Falta configurar la conexión con Supabase»*. Es intencionado: no hay acceso de prueba ni autenticación simulada.
 
@@ -221,6 +227,8 @@ Archivo: `supabase/tests/authorization_checks.sql`.
 3. Pega el script **completo** y, en la sección `CONFIGURACIÓN` (al principio del bloque `do $$`), **sustituye los UUID de ejemplo** por los de tus cuentas. Los encontrarás en *Authentication → Users* o con la consulta del paso 1 de la sección 6. Mantén las comillas simples:
    - `v_authorized uuid := '…';` → **obligatorio**: el UUID de la cuenta autorizada, que ya debe estar en `profiles`. Si dejas el valor de ejemplo `00000000-0000-0000-0000-000000000000`, el script se detiene con el mensaje «Sustituye v_authorized…».
    - `v_unauthorized uuid := null;` → **recomendado**: el UUID de la segunda cuenta, entre comillas (`'…'`). Si lo dejas en `null`, se usa un UUID aleatorio que no corresponde a ninguna cuenta real. La prueba de RLS sigue siendo válida, pero no comprueba una cuenta existente.
+
+   Haz la sustitución **solo en el SQL Editor**, no en el archivo del repositorio: el archivo versionado conserva los valores de ejemplo para que no queden UUID de cuentas reales en Git.
 4. Ejecuta el script **entero de una vez**. Al contrario que las consultas de verificación, aquí el resultado que importa es el de la última sentencia.
 
 **Cómo leer el resultado.** Se muestra una tabla de **31 filas**:
@@ -301,7 +309,7 @@ Cuando termines las pruebas, puedes eliminar la segunda cuenta desde *Authentica
 
 ### 7.3 Lo que estas pruebas no cubren todavía
 
-- **Tablas de negocio:** aún no existen. Cada tabla nueva necesita sus propias políticas y comprobaciones (sección 8).
+- **Tablas de negocio:** este script solo cubre `profiles`. Las tablas de la Fase 2 tienen su propio script (sección 9) y cada tabla nueva necesita sus propias políticas y comprobaciones (sección 8).
 - **La interfaz:** ver la sección 7.4. La app ya comprueba `profiles`, pero esa comprobación es solo de interfaz; la protección de los datos sigue siendo RLS.
 
 ### 7.4 Control de acceso en la aplicación
@@ -341,9 +349,184 @@ La plantilla SQL está en `DATA_MODEL.md` (*Regla para cada tabla de negocio*). 
 1. Activar RLS.
 2. Retirar a `anon` y `authenticated` todos los privilegios que Supabase concede por defecto, incluido `TRUNCATE`, que salta RLS. Después, conceder a `authenticated` solo los necesarios.
 3. Crear políticas `to authenticated` basadas en `(select private.is_authorized())`. Nunca `using (true)` ni políticas abiertas a cualquier autenticado.
-4. Ampliar `supabase/tests/authorization_checks.sql` con las comprobaciones de la tabla.
+4. Crear un script de comprobaciones propio en `supabase/tests/` (por ejemplo, `staff_rls_checks.sql` para la Fase 2), con el mismo patrón que `authorization_checks.sql`, y documentar en esta guía cómo aplicarlo. `authorization_checks.sql` no se amplía.
 
 **Rutas de servidor de Nuxt** (si se crean en `server/api`): usar `serverSupabaseClient(event)`, que actúa con el JWT de la usuaria y respeta RLS. Devolver 401 si `serverSupabaseUser(event)` no devuelve usuaria. No usar `serverSupabaseServiceRole`.
+
+## 9. Fase 2: trabajadoras y horas extra
+
+Archivo: `supabase/migrations/20261028125000_employees_overtime.sql`. Solo crea objetos nuevos y no borra ni modifica datos. Se aplica **una sola vez** por proyecto, después de las secciones 5 y 6.
+
+Crea lo siguiente:
+- **Tabla `public.employees`:** nombre, apellidos, puesto (`role`, opcional), observaciones y `is_active`.
+  - Rechaza nombres y apellidos vacíos o formados solo por espacios.
+  - No se pueden borrar desde la app: se desactivan.
+- **Tabla `public.overtime_entries`:** trabajadora, fecha (`work_date`), duración en minutos, motivo y observaciones.
+  - La duración debe estar entre 1 y 1440 minutos.
+  - Se permiten varios registros de la misma trabajadora el mismo día.
+  - Se pueden editar y eliminar.
+  - La clave foránea a `employees` usa `on delete restrict`: no se puede borrar una trabajadora con registros, ni siquiera desde el panel.
+- **Índice** `(employee_id, work_date)` para historiales y totales por periodo.
+- **Triggers** que mantienen `updated_at` en las dos tablas, con la función `private.set_updated_at()` de la Fase 1.
+- **RLS:**
+  - `anon` no tiene ningún privilegio.
+  - `authenticated` puede leer, crear y modificar en las dos tablas y eliminar solo en `overtime_entries`, y **siempre que `private.is_authorized()` sea cierto**.
+  - Nadie tiene `TRUNCATE` desde la API.
+
+### 9.1 Antes de empezar
+
+Las mismas condiciones que en la sección 5: selector **Role** en **`postgres`** y consultas de verificación **una a una**.
+
+**Comprobación previa:** confirma que las tablas nuevas no existen y que las funciones de la Fase 1 sí.
+
+```sql
+select to_regclass('public.employees') as tabla_employees,
+       to_regclass('public.overtime_entries') as tabla_overtime_entries,
+       to_regprocedure('private.is_authorized()') as funcion_is_authorized,
+       to_regprocedure('private.set_updated_at()') as funcion_set_updated_at;
+```
+
+- **Las dos primeras columnas vacías (`NULL`) y las dos últimas con valor:** se puede aplicar la migración.
+- **Alguna tabla con valor:** **no apliques la migración.** Puede que ya esté aplicada; compruébalo con las consultas del paso 6 de la sección 9.2.
+- **Alguna función vacía:** falta la migración de la Fase 1. Aplícala antes (sección 5).
+
+### 9.2 Aplicar la migración (SQL Editor)
+
+1. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en `postgres`.
+2. Escribe `begin;` en la primera línea.
+3. Pega debajo el contenido completo de `20261028125000_employees_overtime.sql`.
+4. Escribe `commit;` en la última línea.
+5. Ejecuta (*Run*) una sola vez. Lo esperado es «Success. No rows returned».
+6. Verifica el resultado con estas cuatro consultas, **una a una**:
+
+   ```sql
+   select c.relname, c.relrowsecurity as rls
+   from pg_class c
+   where c.oid in ('public.employees'::regclass, 'public.overtime_entries'::regclass)
+   order by 1;
+   ```
+   Esperado: dos filas, `employees` y `overtime_entries`, las dos con `rls = true`.
+
+   ```sql
+   select tablename, policyname, cmd, roles
+   from pg_policies
+   where tablename in ('employees', 'overtime_entries')
+   order by 1, 2;
+   ```
+   Esperado: siete filas, todas con `roles = {authenticated}`.
+   - `employees`: `employees_insert_authorized` (INSERT), `employees_select_authorized` (SELECT) y `employees_update_authorized` (UPDATE). **Ninguna de DELETE.**
+   - `overtime_entries`: `overtime_entries_delete_authorized` (DELETE), `overtime_entries_insert_authorized` (INSERT), `overtime_entries_select_authorized` (SELECT) y `overtime_entries_update_authorized` (UPDATE).
+
+   ```sql
+   select table_name, grantee,
+          string_agg(privilege_type, ', ' order by privilege_type) as privilegios
+   from information_schema.role_table_grants
+   where table_schema = 'public'
+     and table_name in ('employees', 'overtime_entries')
+     and grantee in ('anon', 'authenticated')
+   group by 1, 2
+   order by 1, 2;
+   ```
+   Esperado: exactamente dos filas, ninguna de `anon`.
+   - `employees` · `authenticated` · `INSERT, SELECT, UPDATE`
+   - `overtime_entries` · `authenticated` · `DELETE, INSERT, SELECT, UPDATE`
+
+   ```sql
+   select tgname, tgrelid::regclass as tabla
+   from pg_trigger
+   where not tgisinternal
+     and tgrelid in ('public.employees'::regclass, 'public.overtime_entries'::regclass)
+   order by 1;
+   ```
+   Esperado: `employees_set_updated_at` y `overtime_entries_set_updated_at`.
+
+Si después empiezas a usar la CLI de Supabase, marca esta migración como aplicada: `npx supabase migration repair --status applied 20261028125000`.
+
+### 9.3 Si la migración da un error
+
+Como en la sección 5, la transacción se anula entera y **no se aplica nada**.
+
+1. Copia el mensaje de error completo y **no** vuelvas a ejecutar la migración todavía.
+2. En una consulta nueva, con el rol `postgres`, repite la comprobación previa de la sección 9.1. Si aparece *current transaction is aborted*, ejecuta `rollback;` sola y repítela.
+3. Interpreta el resultado:
+   - **Las dos tablas vacías (`NULL`):** no ha quedado nada aplicado. Corrige la causa y repite la sección 9.2 desde el paso 1.
+   - **Alguna tabla con valor:** no debería ocurrir con `begin;`/`commit;`. No reintentes ni borres nada a mano; revisa el estado con las consultas del paso 6.
+
+Errores habituales:
+- *schema "private" does not exist* o *function private.set_updated_at() does not exist*: falta la migración de la Fase 1.
+- *relation "employees" already exists*: la migración ya estaba aplicada.
+- *permission denied for schema public*: el selector Role no está en `postgres`.
+
+### 9.4 Comprobaciones SQL
+
+Archivo: `supabase/tests/staff_rls_checks.sql`. Se usa igual que el de la sección 7.1:
+
+1. **SQL Editor → New query**, con el selector **Role** en **`postgres`**.
+2. Pega el script **completo** y, en la sección `CONFIGURACIÓN`, sustituye los UUID de ejemplo por los de tus cuentas, **solo en el SQL Editor**:
+   - `v_authorized`: **obligatorio**, la cuenta autorizada.
+   - `v_unauthorized`: **recomendado**, la segunda cuenta de prueba, que no está en `profiles`. Si la dejas en `null`, se usa un UUID aleatorio.
+3. Ejecuta el script **entero de una vez**. Es posible que el SQL Editor avise de «operaciones destructivas»: se puede confirmar (ver más abajo).
+
+**Cómo leer el resultado.** Se muestra una tabla de **67 filas**:
+- **66 comprobaciones** cuyo `resultado` debe empezar por **`OK`**:
+  - `OK (denegado)`: un intento prohibido falló por falta de permisos, que es lo correcto.
+  - `OK (0 filas afectadas)`: una cuenta no autorizada intentó modificar o borrar filas que no puede ver. Con RLS no da error: simplemente no afecta a nada.
+  - `OK (rechazado, <código>)`: una restricción ha rechazado un dato inválido.
+- **1 fila informativa** («Segunda cuenta: existe en auth.users»), que empieza por **`INFO`** y no cuenta como fallo. Se interpreta igual que en la sección 7.1.
+- **Cualquier fila con `FALLO`** indica un problema. No sigas adelante.
+
+Qué comprueba:
+- **Configuración:**
+  - RLS activo.
+  - Políticas exactas y basadas en `is_authorized()`.
+  - Privilegios de `anon`, `authenticated` y `PUBLIC`.
+  - Clave foránea con `ON DELETE RESTRICT`, triggers e índice.
+- **Sin sesión (`anon`):** no puede leer, crear, modificar, borrar ni vaciar ninguna de las dos tablas.
+- **Cuenta no autorizada:**
+  - No ve ninguna fila.
+  - No puede crear filas.
+  - Sus modificaciones y borrados no afectan a nada.
+  - No puede borrar trabajadoras, vaciar tablas, desactivar RLS ni cambiar políticas.
+- **Cuenta autorizada:**
+  - Ve los datos, crea trabajadoras y registros (varios el mismo día), corrige y elimina registros y desactiva trabajadoras.
+  - La trabajadora desactivada conserva su historial y `updated_at` se actualiza solo.
+  - No puede borrar trabajadoras ni vaciar tablas.
+- **Restricciones:**
+  - Rechaza duraciones de 0, negativas o de más de 1440 minutos, y campos obligatorios vacíos.
+  - Rechaza nombres o apellidos vacíos o solo con espacios y registros de trabajadoras inexistentes.
+  - Como `postgres`, no se puede borrar una trabajadora con registros.
+- **Limpieza:** la última fila confirma que no queda ningún dato de prueba.
+
+**Datos de prueba y aviso de «operaciones destructivas».** Para que las pruebas de visibilidad tengan sentido, el script crea una trabajadora («Prueba Comprobaciones RLS») y unos registros de horas extra. Todas las pruebas se ejecutan dentro de un bloque que termina siempre con un error forzado, así que PostgreSQL **deshace todas esas filas y cualquier escritura de las pruebas**. Los `DELETE`, `TRUNCATE`, `ALTER` y `DROP` del script son intentos que deben fallar o escrituras sobre esas filas temporales. No se modifica ningún dato, tabla, política ni función real.
+
+Para confirmarlo, después del script puedes ejecutar:
+
+```sql
+select count(*) from public.employees where last_name = 'Comprobaciones RLS';
+```
+
+Esperado: `0`.
+
+### 9.5 Comprobaciones a través de la API (opcional, recomendado)
+
+Igual que la sección 7.2, con las mismas funciones y variables (`URL`, `KEY`, `token_de`). Con la segunda cuenta (`T2`, no autorizada):
+
+```bash
+# Lectura → esperado: HTTP 200 y []
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/employees?select=*" -H "apikey: $KEY" -H "Authorization: Bearer $T2"
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/overtime_entries?select=*" -H "apikey: $KEY" -H "Authorization: Bearer $T2"
+# Crear una trabajadora → esperado: HTTP 403, código 42501 (new row violates row-level security policy)
+curl -s -w '\nHTTP %{http_code}\n' -X POST "$URL/rest/v1/employees" -H "apikey: $KEY" -H "Authorization: Bearer $T2" \
+  -H "Content-Type: application/json" -d '{"first_name":"Prueba","last_name":"API"}'
+```
+
+Sin sesión (solo la clave publicable) → esperado: HTTP 401, código 42501:
+
+```bash
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/employees?select=*" -H "apikey: $KEY"
+```
+
+Con la cuenta autorizada (`T1`), la misma lectura devuelve HTTP 200 y la lista de trabajadoras (vacía si aún no hay ninguna). No hace falta probar escrituras con `T1` en el proyecto real: el script de la sección 9.4 ya las comprueba sin dejar datos.
 
 ## Limitaciones conocidas
 
@@ -352,7 +535,7 @@ La plantilla SQL está en `DATA_MODEL.md` (*Regla para cada tabla de negocio*). 
 - No hay recuperación de contraseña desde la aplicación. Por ahora se cambia desde el panel de Supabase (*Authentication → Users*).
 - Si un proyecto usa las claves JWT antiguas (simétricas), cada comprobación de sesión consulta a Supabase. Con las claves asimétricas actuales la verificación es local.
 - **Validación del SQL:**
-  - La migración y el script de comprobación se han probado en un PostgreSQL 16 local que imita los roles y privilegios por defecto de Supabase (`anon`, `authenticated`, `service_role`, `auth.uid()`). Las peticiones de la sección 7.2 se han probado contra PostgREST 13 en local, con tokens de prueba.
-  - **No** se han probado en el proyecto remoto, cuya versión de PostgreSQL y configuración pueden diferir.
-  - La seguridad solo se puede dar por validada después de ejecutar las secciones 7.1 y 7.2 en el proyecto real.
+  - Las migraciones y los scripts de comprobación se han probado en un PostgreSQL 16 local que imita los roles y privilegios por defecto de Supabase (`anon`, `authenticated`, `service_role`, `auth.uid()`). Las peticiones de las secciones 7.2 y 9.5 se han probado contra PostgREST 13 en local, con tokens de prueba.
+  - **Fase 1:** la migración y `authorization_checks.sql` se han ejecutado también en el proyecto remoto (31 filas correctas). Falta confirmar la sección 7.2.
+  - **Fase 2:** la migración y `staff_rls_checks.sql` **no** se han ejecutado todavía en el proyecto remoto, cuya versión de PostgreSQL y configuración pueden diferir. Su seguridad solo se puede dar por validada después de las secciones 9.2 y 9.4.
 - **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.
