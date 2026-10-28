@@ -59,6 +59,10 @@ Decisiones:
 - **Corrección de errores:** los registros se pueden editar y también **eliminar** (por ejemplo, un duplicado). Es la única tabla de esta fase con `DELETE`.
 - **`on delete restrict`:** no se puede borrar una trabajadora que tenga registros, ni siquiera desde el panel de Supabase. Así se protege el historial.
 - **Fecha:** `work_date` es una fecha sin hora. La app propone el día actual en la zona horaria de la tienda (`Europe/Madrid`).
+- **Reglas que aplica solo la aplicación** (la base de datos no las impone):
+  - al registrar, solo se puede elegir un empleado activo; al editar, se mantiene también el ya asociado aunque esté inactivo, para poder corregir registros antiguos;
+  - la fecha no puede ser posterior a hoy;
+  - motivo de 200 caracteres como máximo y observaciones de 1000.
 
 Los totales semanales/mensuales se calculan a partir de los registros filtrados por fecha; no se guardan acumulados que puedan quedar desactualizados.
 

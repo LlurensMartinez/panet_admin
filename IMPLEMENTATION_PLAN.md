@@ -37,14 +37,14 @@
 **Regla para las fases 2 a 5:** cada migración que cree una tabla de negocio debe incluir, en el mismo archivo, RLS y políticas basadas en `private.is_authorized()` (plantilla en `DATA_MODEL.md`). Además, cada migración tiene su propio script de comprobaciones en `supabase/tests/` (por ejemplo, `staff_rls_checks.sql`); `authorization_checks.sql` no se amplía.
 
 ## Fase 2 — Personal y horas extra
-- Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`. *(Migración preparada: `supabase/migrations/20261028125000_employees_overtime.sql`, con sus comprobaciones en `supabase/tests/staff_rls_checks.sql`. Verificada en un PostgreSQL local que imita Supabase; **pendiente de aplicar y comprobar en el proyecto remoto** (`SUPABASE_SETUP.md`, sección 9).)*
-- Crear listado y formulario de trabajadoras. *(Implementado en `/empleados`: listado con búsqueda y filtro por estado, alta, edición y activación/desactivación, sin borrado. Verificado con pruebas unitarias y con pruebas de extremo a extremo en local contra PostgREST y PostgreSQL con la migración aplicada. **Pendiente:** probarlo manualmente contra el proyecto de Supabase real, una vez comprobada allí la migración de la Fase 2.)*
-- Crear formulario móvil para registrar horas extra.
-- Crear historial individual y general.
-- Calcular totales semanales (lunes-domingo) y mensuales.
-- Generar texto compartible para la responsable de zona.
-- Permitir editar registros.
-- Mantener historial de trabajadoras desactivadas. *(Parte de fichas hecha: desactivar solo cambia `is_active` y la ficha se conserva. El historial de horas extra se comprobará cuando exista su pantalla.)*
+- Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`. *(Hecho: `supabase/migrations/20261028125000_employees_overtime.sql`, aplicada en el proyecto remoto según confirmación del usuario. Comprobaciones en `supabase/tests/staff_rls_checks.sql` (`SUPABASE_SETUP.md`, sección 9.4); **pendiente de confirmar** que se han ejecutado en el proyecto remoto con 66 `OK`.)*
+- Crear listado y formulario de trabajadoras. *(Implementado en `/empleados`: listado con búsqueda y filtro por estado, alta, edición y activación/desactivación, sin borrado. Verificado con pruebas unitarias, con pruebas de extremo a extremo en local y, según confirmación del usuario, contra el proyecto de Supabase real.)*
+- Crear formulario móvil para registrar horas extra. *(Implementado en `/horas-extra`: empleado activo, fecha (hoy por defecto, en `Europe/Madrid`), duración en horas y minutos enteros convertida a `duration_minutes` (1 a 1440), motivo y observaciones opcionales. Verificado con pruebas unitarias y de extremo a extremo en local. **Pendiente:** prueba manual contra el proyecto de Supabase real.)*
+- Crear historial individual y general. *(Implementado el historial general con filtros por empleado y por periodo, y el total de los registros visibles. El historial individual se consulta filtrando por empleado. **Pendiente:** prueba manual contra Supabase real.)*
+- Calcular totales semanales (lunes-domingo) y mensuales. *(Pendiente. Ya existe el total de cualquier periodo elegido con «Desde» y «Hasta»; falta el resumen por semana natural y mes natural, por empleado y de la tienda.)*
+- Generar texto compartible para la responsable de zona. *(Pendiente.)*
+- Permitir editar registros. *(Implementado: edición y eliminación con confirmación de registros de horas extra. Eliminar solo borra el registro, nunca la ficha del empleado. **Pendiente:** prueba manual contra Supabase real.)*
+- Mantener historial de trabajadoras desactivadas. *(Hecho en local: desactivar solo cambia `is_active`; sus registros de horas extra siguen visibles, marcados como «inactivo», y se pueden corregir sin cambiar de persona. **Pendiente:** comprobarlo contra Supabase real.)*
 
 **Aceptación:** los totales coinciden con pruebas manuales y la duración se guarda en minutos enteros.
 
