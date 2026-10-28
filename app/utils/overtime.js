@@ -8,6 +8,7 @@
 // - Puede haber varios registros de la misma persona el mismo día.
 
 import { DB_ERROR_KIND, classifyDatabaseError } from './database-errors.js'
+import { getEmployeeFullName, sortEmployees } from './employees.js'
 
 // Columnas reales de public.overtime_entries y, embebida mediante la clave
 // foránea employee_id → employees.id, la ficha del empleado.
@@ -36,12 +37,13 @@ export function splitMinutes(totalMinutes) {
 
 /**
  * Texto legible de una duración en minutos enteros: «1 h 30 min», «2 h»,
- * «45 min». Los totales no se convierten a días: 1530 → «25 h 30 min».
+ * «45 min», «0 h». Los totales no se convierten a días: 1530 → «25 h 30 min».
  */
 export function formatDuration(totalMinutes) {
   const { hours, minutes } = splitMinutes(totalMinutes)
   if (hours && minutes) return `${hours} h ${minutes} min`
   if (hours) return `${hours} h`
+  if (!minutes) return '0 h'
   return `${minutes} min`
 }
 
@@ -52,6 +54,7 @@ export function formatDurationLong(totalMinutes) {
   const m = minutes === 1 ? '1 minuto' : `${minutes} minutos`
   if (hours && minutes) return `${h} y ${m}`
   if (hours) return h
+  if (!minutes) return '0 horas'
   return m
 }
 
@@ -301,6 +304,119 @@ export function selectOvertimePeriod(period, current = {}, today = getTodayDate(
   }
   const range = getPeriodRange(period, today)
   return range ? { period, ...range } : { period: null, from: '', to: '' }
+}
+
+/**
+ * Periodo rápido que corresponde exactamente a unas fechas (para marcarlo en
+ * el selector), o Personalizado si no coincide con ninguno.
+ */
+export function detectOvertimePeriod({ from = '', to = '' } = {}, today = getTodayDate()) {
+  if (!from && !to) return null
+  for (const period of [OVERTIME_PERIOD.TODAY, OVERTIME_PERIOD.WEEK, OVERTIME_PERIOD.MONTH, OVERTIME_PERIOD.YEAR]) {
+    const range = getPeriodRange(period, today)
+    if (range && range.from === from && range.to === to) return period
+  }
+  return OVERTIME_PERIOD.CUSTOM
+}
+
+// ------------------------------------------------- Resumen por empleado
+// El resumen tiene su propio periodo (una semana o un mes concretos, con
+// navegación anterior/siguiente) y no depende de los filtros del listado.
+
+export const OVERTIME_SUMMARY_VIEWS = Object.freeze([
+  { value: OVERTIME_PERIOD.WEEK, label: 'Semanal' },
+  { value: OVERTIME_PERIOD.MONTH, label: 'Mensual' },
+])
+
+/** Semana (lunes a domingo) o mes natural que contiene `anchor`. Reutiliza getPeriodRange. */
+export function getSummaryRange(view, anchor) {
+  if (view !== OVERTIME_PERIOD.WEEK && view !== OVERTIME_PERIOD.MONTH) return null
+  return getPeriodRange(view, anchor)
+}
+
+/**
+ * Fecha de referencia de la semana o el mes anterior (`step` = -1) o
+ * siguiente (`step` = 1). En la vista mensual devuelve el día 1 del mes, para
+ * que no haya desbordes del tipo «31 de febrero».
+ */
+export function shiftSummaryAnchor(view, anchor, step) {
+  if (!isValidDate(anchor)) return anchor
+  if (view === OVERTIME_PERIOD.WEEK) return addDaysToDate(anchor, 7 * step)
+  const [year, month] = anchor.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1 + step, 1)).toISOString().slice(0, 10)
+}
+
+const monthYearFormatter = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+const dayMonthFormatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+/**
+ * Encabezado del periodo del resumen: «Semana del 7 al 13 sept 2026»,
+ * «Semana del 26 oct al 1 nov 2026», «Semana del 28 dic 2026 al 3 ene 2027»
+ * u «Octubre de 2026».
+ */
+export function formatSummaryTitle(view, range) {
+  if (!range) return ''
+  if (view === OVERTIME_PERIOD.MONTH) {
+    const text = monthYearFormatter.format(new Date(`${range.from}T00:00:00Z`))
+    return text.charAt(0).toLocaleUpperCase('es') + text.slice(1)
+  }
+  const fromDate = new Date(`${range.from}T00:00:00Z`)
+  let start = formatWorkDate(range.from, 'compact')
+  if (range.from.slice(0, 7) === range.to.slice(0, 7)) start = String(fromDate.getUTCDate())
+  else if (range.from.slice(0, 4) === range.to.slice(0, 4)) start = dayMonthFormatter.format(fromDate)
+  return `Semana del ${start} al ${formatWorkDate(range.to, 'compact')}`
+}
+
+/**
+ * Horas extra agrupadas por empleado en un periodo (fechas de trabajo, ambos
+ * extremos incluidos; reutiliza filterOvertimeEntries).
+ *
+ * - Se suman los minutos enteros de cada registro, sin redondear.
+ * - Aparecen todos los empleados activos (también con 0 min) y los inactivos
+ *   que tienen registros en el periodo: su historial sigue contando.
+ * - Orden alfabético por nombre y apellidos, como en Empleados.
+ *
+ * @param {object[]} entries registros (con la ficha embebida en `employee`)
+ * @param {object[]} employees fichas de empleados (useEmployees)
+ * @param {{ from: string, to: string }} range
+ */
+export function summarizeOvertimeByEmployee(entries, employees, range) {
+  const inPeriod = range ? filterOvertimeEntries(entries, range) : []
+  const totals = new Map()
+
+  for (const entry of inPeriod) {
+    const current = totals.get(entry.employee_id) ?? { minutes: 0, count: 0, employee: entry.employee ?? null }
+    current.minutes += Number.isInteger(entry.duration_minutes) ? entry.duration_minutes : 0
+    current.count += 1
+    totals.set(entry.employee_id, current)
+  }
+
+  const byId = new Map((employees ?? []).map(employee => [employee.id, employee]))
+  const ids = new Set([
+    ...(employees ?? []).filter(employee => employee.is_active).map(employee => employee.id),
+    ...totals.keys(),
+  ])
+
+  const rows = sortEmployees([...ids].map((id) => {
+    const employee = byId.get(id) ?? totals.get(id)?.employee ?? null
+    return {
+      id,
+      employee,
+      first_name: employee?.first_name ?? '',
+      last_name: employee?.last_name ?? '',
+      name: employee ? getEmployeeFullName(employee) : 'Empleado no disponible',
+      isActive: employee?.is_active !== false,
+      minutes: totals.get(id)?.minutes ?? 0,
+      count: totals.get(id)?.count ?? 0,
+    }
+  }))
+
+  return {
+    rows,
+    totalMinutes: sumDurationMinutes(inPeriod),
+    entryCount: inPeriod.length,
+    employeesWithEntries: totals.size,
+  }
 }
 
 // ------------------------------------------------ Filtros, totales y orden

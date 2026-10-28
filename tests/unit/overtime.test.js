@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   OVERTIME_COLUMNS,
+  OVERTIME_SUMMARY_VIEWS,
+  detectOvertimePeriod,
+  formatSummaryTitle,
+  getSummaryRange,
+  shiftSummaryAnchor,
+  summarizeOvertimeByEmployee,
   OVERTIME_PERIOD,
   OVERTIME_PERIOD_OPTIONS,
   addDaysToDate,
@@ -63,7 +69,7 @@ describe('columnas', () => {
 
 describe('minutos → horas y minutos', () => {
   it.each([
-    [0, { hours: 0, minutes: 0 }, '0 min'],
+    [0, { hours: 0, minutes: 0 }, '0 h'],
     [1, { hours: 0, minutes: 1 }, '1 min'],
     [45, { hours: 0, minutes: 45 }, '45 min'],
     [60, { hours: 1, minutes: 0 }, '1 h'],
@@ -81,6 +87,7 @@ describe('minutos → horas y minutos', () => {
     expect(formatDurationLong(150)).toBe('2 horas y 30 minutos')
     expect(formatDurationLong(45)).toBe('45 minutos')
     expect(formatDurationLong(120)).toBe('2 horas')
+    expect(formatDurationLong(0)).toBe('0 horas')
   })
 })
 
@@ -420,6 +427,168 @@ describe('periodos rápidos', () => {
 
     it('personalizado sin fechas: todas las fechas', () => {
       expect(filterOvertimeEntries(entries, { period: P.CUSTOM, from: '', to: '' })).toHaveLength(5)
+    })
+  })
+})
+
+describe('resumen por empleado', () => {
+  const W = OVERTIME_PERIOD.WEEK
+  const M = OVERTIME_PERIOD.MONTH
+
+  const staff = [
+    { id: 'ana', first_name: 'Ana', last_name: 'López', is_active: true },
+    { id: 'alvaro', first_name: 'Álvaro', last_name: 'Pérez', is_active: true },
+    { id: 'lucia', first_name: 'Lucía', last_name: 'Núñez', is_active: false },
+    { id: 'marta', first_name: 'Marta', last_name: 'Ortega', is_active: true },
+    { id: 'pepe', first_name: 'Pepe', last_name: 'Gil', is_active: false },
+  ]
+  const e = (id, employee_id, work_date, duration_minutes) => entry(id, employee_id, work_date, duration_minutes, {
+    employee: staff.find(s => s.id === employee_id) ?? { id: employee_id, first_name: 'Sin', last_name: 'Ficha', is_active: true },
+  })
+  const data = [
+    e('1', 'ana', '2026-10-26', 20), // lunes
+    e('2', 'ana', '2026-10-28', 20),
+    e('3', 'ana', '2026-11-01', 20), // domingo
+    e('4', 'lucia', '2026-10-27', 95), // inactiva
+    e('5', 'alvaro', '2026-10-25', 60), // domingo de la semana anterior
+    e('6', 'alvaro', '2026-11-02', 30), // lunes de la semana siguiente
+    e('7', 'marta', '2026-10-31', 1),
+    e('8', 'alvaro', '2026-12-31', 45),
+    e('9', 'ana', '2027-01-01', 15),
+  ]
+
+  it('opciones de vista: Semanal y Mensual', () => {
+    expect(OVERTIME_SUMMARY_VIEWS.map(v => v.label)).toEqual(['Semanal', 'Mensual'])
+  })
+
+  describe('periodo y navegación', () => {
+    it('semana de lunes a domingo y mes natural (reutiliza los periodos rápidos)', () => {
+      expect(getSummaryRange(W, '2026-10-28')).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+      expect(getSummaryRange(M, '2026-10-28')).toEqual({ from: '2026-10-01', to: '2026-10-31' })
+      expect(getSummaryRange(OVERTIME_PERIOD.YEAR, '2026-10-28')).toBeNull()
+    })
+
+    it('semana anterior y siguiente, cruzando de año', () => {
+      expect(getSummaryRange(W, shiftSummaryAnchor(W, '2026-10-28', -1))).toEqual({ from: '2026-10-19', to: '2026-10-25' })
+      expect(getSummaryRange(W, shiftSummaryAnchor(W, '2026-10-28', 1))).toEqual({ from: '2026-11-02', to: '2026-11-08' })
+      expect(getSummaryRange(W, shiftSummaryAnchor(W, '2026-12-24', 1))).toEqual({ from: '2026-12-28', to: '2027-01-03' })
+      expect(getSummaryRange(W, shiftSummaryAnchor(W, '2027-01-03', 1))).toEqual({ from: '2027-01-04', to: '2027-01-10' })
+      expect(getSummaryRange(W, shiftSummaryAnchor(W, '2027-01-01', -1))).toEqual({ from: '2026-12-21', to: '2026-12-27' })
+    })
+
+    it('mes anterior y siguiente, sin desbordes por el día del mes ni por el año', () => {
+      expect(shiftSummaryAnchor(M, '2026-01-31', 1)).toBe('2026-02-01')
+      expect(getSummaryRange(M, shiftSummaryAnchor(M, '2026-01-31', 1))).toEqual({ from: '2026-02-01', to: '2026-02-28' })
+      expect(getSummaryRange(M, shiftSummaryAnchor(M, '2028-03-31', -1))).toEqual({ from: '2028-02-01', to: '2028-02-29' })
+      expect(getSummaryRange(M, shiftSummaryAnchor(M, '2026-12-15', 1))).toEqual({ from: '2027-01-01', to: '2027-01-31' })
+      expect(getSummaryRange(M, shiftSummaryAnchor(M, '2027-01-10', -1))).toEqual({ from: '2026-12-01', to: '2026-12-31' })
+      expect(getSummaryRange(M, shiftSummaryAnchor(M, '2026-05-31', 1))).toEqual({ from: '2026-06-01', to: '2026-06-30' })
+    })
+
+    it('ir y volver deja el mismo periodo', () => {
+      let anchor = '2026-10-28'
+      for (let i = 0; i < 14; i++) anchor = shiftSummaryAnchor(M, anchor, -1)
+      for (let i = 0; i < 14; i++) anchor = shiftSummaryAnchor(M, anchor, 1)
+      expect(getSummaryRange(M, anchor)).toEqual(getSummaryRange(M, '2026-10-28'))
+      let week = '2026-10-28'
+      for (let i = 0; i < 60; i++) week = shiftSummaryAnchor(W, week, 1)
+      for (let i = 0; i < 60; i++) week = shiftSummaryAnchor(W, week, -1)
+      expect(week).toBe('2026-10-28')
+    })
+
+    it('encabezado del periodo', () => {
+      expect(formatSummaryTitle(W, getSummaryRange(W, '2026-09-12'))).toBe('Semana del 7 al 13 sept 2026')
+      expect(formatSummaryTitle(W, getSummaryRange(W, '2026-10-28'))).toBe('Semana del 26 oct al 1 nov 2026')
+      expect(formatSummaryTitle(W, getSummaryRange(W, '2026-12-31'))).toBe('Semana del 28 dic 2026 al 3 ene 2027')
+      expect(formatSummaryTitle(M, getSummaryRange(M, '2026-10-28'))).toBe('Octubre de 2026')
+      expect(formatSummaryTitle(M, getSummaryRange(M, '2027-01-05'))).toBe('Enero de 2027')
+    })
+  })
+
+  describe('totales por empleado', () => {
+    it('semana: solo los registros de lunes a domingo, con los minutos exactos', () => {
+      const summary = summarizeOvertimeByEmployee(data, staff, getSummaryRange(W, '2026-10-28'))
+      expect(summary.rows.map(r => [r.name, r.minutes, r.count])).toEqual([
+        ['Álvaro Pérez', 0, 0], // su domingo anterior y su lunes siguiente no cuentan
+        ['Ana López', 60, 3], // 3 × 20 min: no se redondea cada registro
+        ['Lucía Núñez', 95, 1], // inactiva, pero con registros: cuenta
+        ['Marta Ortega', 1, 1],
+      ])
+      expect(summary.totalMinutes).toBe(156)
+      expect(formatDuration(summary.totalMinutes)).toBe('2 h 36 min')
+      expect(summary.entryCount).toBe(5)
+      expect(summary.employeesWithEntries).toBe(3)
+    })
+
+    it('marca a los empleados inactivos y no muestra a los inactivos sin registros', () => {
+      const summary = summarizeOvertimeByEmployee(data, staff, getSummaryRange(W, '2026-10-28'))
+      expect(summary.rows.find(r => r.id === 'lucia').isActive).toBe(false)
+      expect(summary.rows.some(r => r.id === 'pepe')).toBe(false)
+      expect(summary.rows.find(r => r.id === 'ana').isActive).toBe(true)
+    })
+
+    it('mes de octubre: incluye el día 1 y el 31', () => {
+      const summary = summarizeOvertimeByEmployee(data, staff, getSummaryRange(M, '2026-10-05'))
+      expect(summary.rows.map(r => [r.id, r.minutes])).toEqual([
+        ['alvaro', 60], ['ana', 40], ['lucia', 95], ['marta', 1],
+      ])
+      expect(summary.totalMinutes).toBe(196)
+    })
+
+    it('meses de distinta duración y cambio de año', () => {
+      expect(summarizeOvertimeByEmployee(data, staff, getSummaryRange(M, '2026-11-20')).totalMinutes).toBe(50) // 1 y 2 nov
+      expect(summarizeOvertimeByEmployee(data, staff, getSummaryRange(M, '2026-12-01')).totalMinutes).toBe(45) // 31 dic
+      expect(summarizeOvertimeByEmployee(data, staff, getSummaryRange(M, '2027-01-31')).totalMinutes).toBe(15) // 1 ene
+      const crossing = summarizeOvertimeByEmployee(data, staff, getSummaryRange(W, '2026-12-31'))
+      expect(crossing.totalMinutes).toBe(60) // 31 dic + 1 ene, misma semana
+      expect(crossing.rows.filter(r => r.count).map(r => r.id)).toEqual(['alvaro', 'ana'])
+    })
+
+    it('periodo sin registros: total 0 y los empleados activos a 0', () => {
+      const summary = summarizeOvertimeByEmployee(data, staff, getSummaryRange(W, '2025-06-10'))
+      expect(summary.totalMinutes).toBe(0)
+      expect(summary.entryCount).toBe(0)
+      expect(formatDuration(summary.totalMinutes)).toBe('0 h')
+      expect(summary.rows.every(r => r.minutes === 0 && r.isActive)).toBe(true)
+    })
+
+    it('sin datos todavía', () => {
+      expect(summarizeOvertimeByEmployee([], [], getSummaryRange(W, '2026-10-28'))).toEqual({ rows: [], totalMinutes: 0, entryCount: 0, employeesWithEntries: 0 })
+    })
+
+    it('un registro de un empleado que no está en la lista de fichas sigue contando', () => {
+      const summary = summarizeOvertimeByEmployee([e('x', 'otro', '2026-10-28', 30)], staff, getSummaryRange(W, '2026-10-28'))
+      expect(summary.rows.find(r => r.id === 'otro')).toMatchObject({ name: 'Sin Ficha', minutes: 30 })
+      expect(summary.totalMinutes).toBe(30)
+    })
+
+    it('suma exacta con muchos registros (sin pérdidas)', () => {
+      const many = Array.from({ length: 500 }, (_, i) => e(`m${i}`, 'ana', '2026-10-28', 7))
+      const summary = summarizeOvertimeByEmployee(many, staff, getSummaryRange(M, '2026-10-28'))
+      expect(summary.totalMinutes).toBe(3500)
+      expect(formatDuration(summary.totalMinutes)).toBe('58 h 20 min')
+    })
+
+    it('el total general es la suma de las filas', () => {
+      const summary = summarizeOvertimeByEmployee(data, staff, getSummaryRange(M, '2026-10-05'))
+      expect(summary.rows.reduce((t, r) => t + r.minutes, 0)).toBe(summary.totalMinutes)
+    })
+  })
+
+  describe('enlace del resumen al listado', () => {
+    it('reconoce los periodos rápidos equivalentes', () => {
+      expect(detectOvertimePeriod({ from: '2026-10-26', to: '2026-11-01' }, '2026-10-28')).toBe(OVERTIME_PERIOD.WEEK)
+      expect(detectOvertimePeriod({ from: '2026-10-01', to: '2026-10-31' }, '2026-10-28')).toBe(OVERTIME_PERIOD.MONTH)
+      expect(detectOvertimePeriod({ from: '2026-10-28', to: '2026-10-28' }, '2026-10-28')).toBe(OVERTIME_PERIOD.TODAY)
+    })
+
+    it('una semana o un mes pasados son Personalizado', () => {
+      expect(detectOvertimePeriod({ from: '2026-10-19', to: '2026-10-25' }, '2026-10-28')).toBe(OVERTIME_PERIOD.CUSTOM)
+      expect(detectOvertimePeriod({ from: '2026-09-01', to: '2026-09-30' }, '2026-10-28')).toBe(OVERTIME_PERIOD.CUSTOM)
+    })
+
+    it('sin fechas: ningún periodo', () => {
+      expect(detectOvertimePeriod({}, '2026-10-28')).toBeNull()
     })
   })
 })
