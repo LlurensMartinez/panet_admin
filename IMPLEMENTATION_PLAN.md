@@ -20,16 +20,22 @@
 **Aceptación:** la aplicación arranca localmente y el repositorio contiene instrucciones y configuración básica.
 
 ## Fase 1 — Supabase y acceso privado
-- Configurar proyecto Supabase.
-- Crear la tabla `profiles`.
-- Implementar inicio/cierre de sesión.
-- Configurar protección de rutas.
-- Añadir políticas RLS y probar acceso no autorizado.
+- Configurar proyecto Supabase. *(Hecho: proyecto creado y variables configuradas en local.)*
+- Crear la tabla `profiles`. *(Migración preparada: `supabase/migrations/20261028095000_profiles_authorization.sql`, pendiente de aplicar en el proyecto remoto. Es la lista de cuentas autorizadas: opción A de `DATA_MODEL.md`.)*
+- Implementar inicio/cierre de sesión. *(Hecho.)*
+- Configurar protección de rutas. *(Hecho en el frontend; no sustituye a RLS.)*
+- Añadir políticas RLS y probar acceso no autorizado. *(RLS de `profiles` y función `private.is_authorized()` preparadas. Pruebas en `supabase/tests/authorization_checks.sql`, pendientes de ejecutar en el proyecto remoto.)*
 
-**Aceptación:** la encargada puede acceder y las rutas/datos privados están protegidos.
+**Aceptación:** la encargada puede acceder y las rutas/datos privados están protegidos. Para darla por cumplida:
+- la migración está aplicada;
+- la cuenta de la encargada está en `profiles`;
+- `authorization_checks.sql` devuelve todo `OK` en el proyecto real;
+- las pruebas por API de `SUPABASE_SETUP.md` (sin sesión y con una segunda cuenta no autorizada) dan el resultado esperado.
+
+**Regla para las fases 2 a 5:** cada migración que cree una tabla de negocio debe incluir, en el mismo archivo, RLS y políticas basadas en `private.is_authorized()` (plantilla en `DATA_MODEL.md`). Además, hay que ampliar las comprobaciones de `supabase/tests/authorization_checks.sql` para esa tabla.
 
 ## Fase 2 — Personal y horas extra
-- Crear migraciones para `employees` y `overtime_entries`.
+- Crear migraciones para `employees` y `overtime_entries`, con RLS y políticas basadas en `private.is_authorized()`.
 - Crear listado y formulario de trabajadoras.
 - Crear formulario móvil para registrar horas extra.
 - Crear historial individual y general.
@@ -41,7 +47,7 @@
 **Aceptación:** los totales coinciden con pruebas manuales y la duración se guarda en minutos enteros.
 
 ## Fase 3 — Proveedores y catálogo
-- Crear tablas `suppliers` y `supplier_products`.
+- Crear tablas `suppliers` y `supplier_products`, con RLS y políticas basadas en `private.is_authorized()`.
 - Implementar altas, edición y desactivación.
 - Configurar días de pedido y entrega.
 - Configurar unidades y cantidades habituales.
@@ -49,7 +55,7 @@
 **Aceptación:** la encargada puede gestionar el catálogo desde móvil y ordenador.
 
 ## Fase 4 — Pedidos e historial
-- Crear tablas `orders` y `order_lines`.
+- Crear tablas `orders` y `order_lines`, con RLS y políticas basadas en `private.is_authorized()`.
 - Mostrar proveedores a los que corresponde pedir en la fecha actual.
 - Crear pedido con líneas basadas en los productos activos y cantidades habituales.
 - Permitir modificar cantidades del pedido sin modificar valores habituales.
@@ -64,6 +70,7 @@
 - Implementar consulta de horarios.
 - Implementar vacaciones y ausencias.
 - Implementar gestión manual de festivos.
+- Las tablas `employee_regular_schedules`, `employee_absences` y `holidays` se crean con RLS y políticas basadas en `private.is_authorized()`.
 - Mostrar advertencias preventivas sobre entregas previstas en festivos.
 
 **Aceptación:** se pueden consultar horarios y ausencias; los avisos de festivos no afirman que el proveedor no vaya a entregar.
