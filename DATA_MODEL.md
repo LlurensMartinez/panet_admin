@@ -27,26 +27,39 @@ Implementada en `supabase/migrations/20261028095000_profiles_authorization.sql`.
 No se crea una tabla de cuentas para trabajadoras.
 
 ### `employees`
-- `id uuid primary key`
-- `first_name text not null`
-- `last_name text not null`
-- `role text null`
+- `id uuid primary key default gen_random_uuid()`
+- `first_name text not null`, con `check (first_name ~ '[^[:space:]]')`
+- `last_name text not null`, con `check (last_name ~ '[^[:space:]]')`
+- `role text null`: puesto o función en la tienda (texto libre). No tiene relación con los roles de la base de datos.
 - `notes text null`
 - `is_active boolean not null default true`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
+
+Decisiones:
+- **Nombre y apellidos no pueden estar vacíos** ni contener solo espacios, tabuladores o saltos de línea. Lo rechaza la base de datos además del formulario. Otros caracteres invisibles poco habituales, como el espacio de no separación, no se detectan: el formulario debe recortar los espacios antes de guardar.
+- **No se borran:** los clientes no tienen el privilegio `DELETE`. Las trabajadoras se desactivan con `is_active = false` y conservan su historial.
 
 ### `overtime_entries`
-- `id uuid primary key`
-- `employee_id uuid not null references employees(id)`
+- `id uuid primary key default gen_random_uuid()`
+- `employee_id uuid not null references employees(id) on delete restrict`
 - `work_date date not null`
-- `duration_minutes integer not null check (duration_minutes > 0)`
+- `duration_minutes integer not null`, con `check (duration_minutes > 0 and duration_minutes <= 1440)`
 - `reason text null`
 - `notes text null`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
+
+Decisiones:
+- **Duración:** de 1 a 1440 minutos (24 horas) por registro. Evita ceros, negativos y errores de tecleo evidentes. Un valor decimal se rechaza: la app debe convertir horas y minutos a un entero antes de enviarlo.
+- **Varios registros por trabajadora y día:** permitidos. No hay restricción de unicidad: los totales simplemente suman.
+- **Corrección de errores:** los registros se pueden editar y también **eliminar** (por ejemplo, un duplicado). Es la única tabla de esta fase con `DELETE`.
+- **`on delete restrict`:** no se puede borrar una trabajadora que tenga registros, ni siquiera desde el panel de Supabase. Así se protege el historial.
+- **Fecha:** `work_date` es una fecha sin hora. La app propone el día actual en la zona horaria de la tienda (`Europe/Madrid`).
 
 Los totales semanales/mensuales se calculan a partir de los registros filtrados por fecha; no se guardan acumulados que puedan quedar desactualizados.
+
+`employees` y `overtime_entries` están implementadas en `supabase/migrations/20261028125000_employees_overtime.sql`, con sus comprobaciones en `supabase/tests/staff_rls_checks.sql`.
 
 ### `suppliers`
 - `id uuid primary key`
@@ -153,6 +166,15 @@ Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar auten
   - No hay políticas de `INSERT`, `UPDATE` ni `DELETE`, así que ningún cliente puede añadirse, modificarse ni retirarse.
 - **Altas y bajas de autorización:** se hacen a mano desde el SQL Editor de Supabase (rol `postgres`). Ver `SUPABASE_SETUP.md`.
 
+### Permisos de las tablas de la Fase 2
+
+| Tabla | `anon` | `authenticated` (si `private.is_authorized()`) |
+| --- | --- | --- |
+| `employees` | ninguno | `SELECT`, `INSERT`, `UPDATE` |
+| `overtime_entries` | ninguno | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+
+Ninguno de los dos roles tiene `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Una cuenta autenticada pero no autorizada tiene los privilegios de tabla, pero las políticas no le dejan ver ni crear filas. Sus `UPDATE` y `DELETE` no afectan a ninguna fila (la API responde `200` con una lista vacía).
+
 ### Regla para cada tabla de negocio
 
 Toda tabla nueva del esquema `public` debe incluir, **en la misma migración que la crea**:
@@ -173,16 +195,26 @@ create policy "<tabla>_update_authorized" on public.<tabla>
   using ((select private.is_authorized()))
   with check ((select private.is_authorized()));
 -- DELETE solo si la tabla permite borrado físico (ver decisión pendiente 4);
--- en las entidades con historial se usa is_active.
+-- en las entidades con historial se usa is_active. Si se permite, se añade
+-- `delete` al grant y una política:
+-- create policy "<tabla>_delete_authorized" on public.<tabla>
+--   for delete to authenticated using ((select private.is_authorized()));
 ```
 
-También hay que ampliar `supabase/tests/authorization_checks.sql` con las comprobaciones de la tabla nueva: sin sesión, sesión no autorizada y sesión autorizada.
+Si la tabla usa `updated_at`, se añade también el trigger con `private.set_updated_at()`.
+
+**Pruebas SQL:** cada migración tiene su propio script de comprobaciones en `supabase/tests/`, con el mismo patrón que `authorization_checks.sql`:
+- `authorization_checks.sql`: `profiles` y `private.is_authorized()` (Fase 1). No se amplía con tablas nuevas, para que su resultado verificado no cambie.
+- `staff_rls_checks.sql`: `employees` y `overtime_entries` (Fase 2).
+- Las fases siguientes añaden su propio archivo, por ejemplo `suppliers_rls_checks.sql`.
+
+Cada script comprueba la configuración (RLS, políticas, privilegios, restricciones) y simula peticiones sin sesión, con una sesión no autorizada y con la cuenta autorizada. Si necesita datos, los crea y los deshace al terminar. No deja cambios en la base de datos. Los UUID reales se escriben solo en la copia que se pega en el SQL Editor, nunca en el archivo versionado.
 
 Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.role() = 'authenticated'`.
 
 ## Índices recomendados
 
-- `overtime_entries(employee_id, work_date)`
+- `overtime_entries(employee_id, work_date)`: creado en la migración de la Fase 2 (`overtime_entries_employee_id_work_date_idx`).
 - `orders(order_date, status)`
 - `orders(supplier_id, order_date)`
 - `order_lines(order_id)`
@@ -194,4 +226,4 @@ Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.rol
 1. Confirmar cómo se representará el horario habitual: uno o varios intervalos por día.
 2. Confirmar si se pueden registrar dos pedidos del mismo proveedor en una fecha, o si debe haber solo uno.
 3. ~~Elegir la forma de restringir RLS al usuario autorizado.~~ **Decidido:** opción A, tabla `profiles` y función `private.is_authorized()` (ver *Modelo de autorización*).
-4. Decidir si los productos/proveedores se desactivan siempre o si se permite borrarlos cuando no tienen historial.
+4. Decidir si los productos/proveedores se desactivan siempre o si se permite borrarlos cuando no tienen historial. (Para la Fase 2 ya está decidido: las trabajadoras solo se desactivan y los registros de horas extra sí se pueden eliminar.)
