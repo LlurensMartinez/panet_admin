@@ -1,8 +1,11 @@
 <script setup>
-defineProps({
+const props = defineProps({
   variant: { type: String, default: 'ghost' },
   size: { type: String, default: 'md' },
   block: { type: Boolean, default: false },
+  // Solo el icono (para la cabecera en móvil). El nombre accesible se
+  // mantiene con aria-label.
+  compact: { type: Boolean, default: false },
 })
 
 const supabase = useSupabaseClient()
@@ -41,12 +44,14 @@ async function logout() {
 
 <template>
   <UButton
-    label="Cerrar sesión"
+    :label="props.compact ? undefined : 'Cerrar sesión'"
+    :aria-label="props.compact ? 'Cerrar sesión' : undefined"
     icon="i-lucide-log-out"
     color="neutral"
     :variant="variant"
     :size="size"
     :block="block"
+    :square="props.compact"
     :loading="loading"
     :disabled="loading"
     @click="logout"
