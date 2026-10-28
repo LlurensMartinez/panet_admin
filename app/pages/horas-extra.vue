@@ -40,9 +40,11 @@ function retry() {
 }
 
 // ----------------------------------------------------------------- Filtros
-const filters = reactive({ employeeId: undefined, from: '', to: '' })
+// period: periodo rápido elegido (OVERTIME_PERIOD) o null = todas las fechas.
+// El listado se filtra siempre por from/to, que el periodo rellena.
+const filters = reactive({ employeeId: undefined, period: null, from: '', to: '' })
 const rangeError = computed(() => validateDateRange(filters))
-const hasFilters = computed(() => Boolean(filters.employeeId || filters.from || filters.to))
+const hasFilters = computed(() => Boolean(filters.employeeId || filters.period || filters.from || filters.to))
 
 const visibleEntries = computed(() => rangeError.value
   ? []
@@ -57,6 +59,7 @@ const scopeText = computed(() => describeOvertimeFilters({ employeeName: filterE
 
 function clearFilters() {
   filters.employeeId = undefined
+  filters.period = null
   filters.from = ''
   filters.to = ''
 }
@@ -236,6 +239,7 @@ async function confirmDelete() {
 
       <OvertimeFilters
         v-model:employee-id="filters.employeeId"
+        v-model:period="filters.period"
         v-model:from="filters.from"
         v-model:to="filters.to"
         :employees="employees"
