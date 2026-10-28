@@ -52,11 +52,11 @@ do $$
 declare
   -- ---------------------------------------------------------------- CONFIGURACIÓN
   -- UUID de la cuenta autorizada (Authentication → Users), ya añadida a profiles.
-  v_authorized uuid := 'ff6fe406-976c-427d-ad4c-0975adc96cdf';
+  v_authorized uuid := '00000000-0000-0000-0000-000000000000';
   -- UUID de una segunda cuenta autenticada SIN autorización (recomendado:
   -- crea una cuenta de prueba en Authentication → Users y no la añadas a
   -- profiles). Si lo dejas en null, se usa un UUID aleatorio.
-  v_unauthorized uuid := 'c50b30c7-8cfe-4252-8154-f7e268526496';
+  v_unauthorized uuid := null;
   -- ---------------------------------------------------------------------------
 
   -- Rol con el que se ejecuta el script (debe ser postgres). Se restaura
