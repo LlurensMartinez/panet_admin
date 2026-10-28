@@ -69,6 +69,7 @@ begin
   if v_authorized = '00000000-0000-0000-0000-000000000000' then
     raise exception 'Sustituye v_authorized por el UUID de la cuenta autorizada antes de ejecutar el script.';
   end if;
+  v_unauthorized_is_random := v_unauthorized is null;
   v_unauthorized := coalesce(v_unauthorized, gen_random_uuid());
   if v_unauthorized = v_authorized then
     raise exception 'v_unauthorized debe ser una cuenta distinta de v_authorized.';
@@ -132,6 +133,15 @@ begin
   select count(*) into v_count from public.profiles where id = v_unauthorized;
   r := r || format('configuración|La segunda cuenta NO tiene fila en profiles|%s',
     case when v_count = 0 then 'OK' else 'FALLO' end);
+
+  -- Solo lectura de auth.users: no se crea ni modifica ninguna cuenta.
+  select count(*) into v_count from auth.users where id = v_unauthorized;
+  r := r || format('configuración|Segunda cuenta: existe en auth.users|%s',
+    case
+      when v_unauthorized_is_random then 'INFO: UUID aleatorio (no es una cuenta real; la prueba de RLS sigue siendo válida)'
+      when v_count = 1 then 'INFO: sí, es una cuenta real'
+      else 'INFO: no existe; revisa el UUID de v_unauthorized'
+    end);
 
   -- Escrituras que ningún cliente debe poder hacer. %1$s = UUID de la sesión.
   denied_writes := array[
