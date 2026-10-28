@@ -1,6 +1,13 @@
 <script setup>
+defineProps({
+  variant: { type: String, default: 'ghost' },
+  size: { type: String, default: 'md' },
+  block: { type: Boolean, default: false },
+})
+
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
+const authorization = useAuthorization()
 const toast = useToast()
 
 const loading = ref(false)
@@ -23,6 +30,7 @@ async function logout() {
     }
 
     user.value = null
+    authorization.reset()
     await navigateTo('/login', { replace: true })
   }
   finally {
@@ -36,7 +44,9 @@ async function logout() {
     label="Cerrar sesión"
     icon="i-lucide-log-out"
     color="neutral"
-    variant="ghost"
+    :variant="variant"
+    :size="size"
+    :block="block"
     :loading="loading"
     :disabled="loading"
     @click="logout"

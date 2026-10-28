@@ -5,7 +5,11 @@ useHead({ title: 'Iniciar sesión · Panet Admin' })
 
 const supabase = useSupabaseClient()
 const user = useSupabaseUser()
+const authorization = useAuthorization()
 const route = useRoute()
+
+// Aviso cuando el middleware ha cerrado una sesión que Supabase ya no acepta.
+const sessionExpired = computed(() => route.query.reason === 'expired')
 
 const state = reactive({
   email: '',
@@ -63,6 +67,8 @@ async function onSubmit() {
       return
     }
 
+    // Nueva sesión: la autorización se vuelve a comprobar en el middleware.
+    authorization.reset()
     user.value = data.claims
     state.password = ''
 
@@ -103,6 +109,15 @@ async function onSubmit() {
             icon="i-lucide-circle-alert"
             :title="errorMessage"
             role="alert"
+          />
+
+          <UAlert
+            v-else-if="sessionExpired"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-clock"
+            title="Tu sesión ha caducado. Vuelve a iniciar sesión."
+            role="status"
           />
 
           <UFormField
