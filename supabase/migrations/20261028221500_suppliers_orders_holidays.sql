@@ -222,7 +222,7 @@ $$;
 comment on function private.set_order_prepared_at() is
   'Trigger: mantiene orders.prepared_at según el estado, con la hora del servidor.';
 
-revoke all on function private.set_order_prepared_at() from public;
+revoke all on function private.set_order_prepared_at() from public, anon, authenticated;
 
 create trigger orders_set_prepared_at
 before insert or update on public.orders
