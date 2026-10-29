@@ -7,6 +7,9 @@ const model = defineModel({ type: String, required: true })
 
 const props = defineProps({
   counts: { type: Object, required: true },
+  // Nombre del grupo para lectores de pantalla (también se usa en la ficha
+  // del proveedor para filtrar sus productos).
+  legend: { type: String, default: 'Mostrar proveedores' },
   loading: { type: Boolean, default: false },
   // Sin datos (error de carga): no se muestran recuentos engañosos a cero.
   unavailable: { type: Boolean, default: false },
@@ -24,7 +27,7 @@ const options = computed(() => [
 <template>
   <fieldset class="min-w-0">
     <legend class="sr-only">
-      Mostrar proveedores
+      {{ legend }}
     </legend>
     <div class="flex w-full rounded-lg bg-elevated p-1 sm:inline-flex sm:w-auto">
       <label

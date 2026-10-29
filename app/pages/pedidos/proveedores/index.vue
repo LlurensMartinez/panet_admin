@@ -230,7 +230,7 @@ const deactivatePending = computed(() =>
   <div class="space-y-8">
     <PageHeader
       title="Proveedores"
-      description="Días habituales de entrega y antelación con la que se prepara cada pedido. Al desactivar un proveedor, sus pedidos se conservan."
+      description="Días habituales de entrega y antelación con la que se prepara cada pedido. Pulsa un proveedor para ver sus productos habituales. Al desactivar un proveedor, sus pedidos se conservan."
     >
       <template #actions>
         <UButton

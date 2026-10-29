@@ -1,7 +1,8 @@
 <script setup>
 // Una fila del listado de proveedores. En escritorio, columnas alineadas con
 // la cabecera de SupplierList; en móvil, nombre y calendario apilados y las
-// acciones en un menú.
+// acciones en un menú. El nombre lleva a la ficha del proveedor, con sus
+// productos habituales.
 const props = defineProps({
   supplier: { type: Object, required: true },
   pending: { type: Boolean, default: false },
@@ -16,7 +17,14 @@ const leadText = computed(() => hasDeliveries.value
   ? `Prepara: ${describeLeadDays(props.supplier.order_lead_days).toLowerCase()}`
   : 'Sin entregas habituales')
 
+const productsPath = computed(() => `/pedidos/proveedores/${props.supplier.id}`)
+
 const menuItems = computed(() => [[
+  {
+    label: 'Productos',
+    icon: 'i-lucide-package',
+    to: productsPath.value,
+  },
   {
     label: 'Editar',
     icon: 'i-lucide-pencil',
@@ -42,7 +50,18 @@ const menuItems = computed(() => [[
         class="truncate font-semibold"
         :class="supplier.is_active ? 'text-highlighted' : 'text-toned'"
       >
-        {{ supplier.name }}
+        <NuxtLink
+          :to="productsPath"
+          :aria-label="`${supplier.name}: ver productos habituales`"
+          class="group inline-flex max-w-full items-center gap-1 rounded-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <span class="truncate group-hover:underline group-hover:underline-offset-4">{{ supplier.name }}</span>
+          <UIcon
+            name="i-lucide-chevron-right"
+            class="size-4 shrink-0 text-dimmed group-hover:text-primary"
+            aria-hidden="true"
+          />
+        </NuxtLink>
       </p>
       <p
         v-if="supplier.notes"

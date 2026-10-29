@@ -12,8 +12,11 @@ const SECTIONS = [
   { label: 'Festivos', to: '/pedidos/festivos', icon: 'i-lucide-calendar-x-2' },
 ]
 
+// «Pedidos» solo en /pedidos; las demás secciones incluyen sus subpáginas
+// (por ejemplo, la ficha de un proveedor dentro de «Proveedores»).
 function isCurrent(section) {
-  return route.path.replace(/\/$/, '') === section.to
+  const path = route.path.replace(/\/$/, '')
+  return section.to === '/pedidos' ? path === section.to : path === section.to || path.startsWith(`${section.to}/`)
 }
 </script>
 
