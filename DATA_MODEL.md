@@ -3,7 +3,7 @@
 **Estado:**
 - `profiles`: implementada y aplicada en el proyecto de Supabase (Fase 1).
 - `employees` y `overtime_entries`: implementadas y aplicadas en el proyecto de Supabase (Fase 2); falta confirmar la ejecución de `staff_rls_checks.sql` allí.
-- `suppliers`, `orders` y `holidays`: implementadas en la migración `20261028221500_suppliers_orders_holidays.sql`, preparada y **pendiente de aplicar** en el proyecto remoto (Fase 3).
+- `suppliers`, `orders` y `holidays`: implementadas en la migración `20261028221500_suppliers_orders_holidays.sql`, aplicada en el proyecto de Supabase con sus comprobaciones correctas (Fase 3).
 - Resto de tablas: propuesta inicial; revisar antes de crear sus migraciones.
 
 ## Convenciones

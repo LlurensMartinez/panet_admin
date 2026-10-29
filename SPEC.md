@@ -78,7 +78,7 @@ No se envían pedidos automáticamente al proveedor: la aplicación registra y o
 
 - Mostrar las entregas previstas a partir de los días configurados para cada proveedor.
 - Permitir configurar los festivos relevantes para la tienda: fecha, nombre, ámbito (nacional, autonómico o local) y notas opcionales. Uno por fecha. Se pueden corregir y eliminar.
-- Si la fecha de entrega de un pedido o de una previsión coincide con un festivo configurado, mostrar un aviso preventivo.
+- Si la fecha de entrega de un pedido o de una previsión coincide con un festivo configurado, mostrar un aviso preventivo (en la agenda, el historial y el formulario del pedido). No se avisa de los pedidos marcados como «no se pide» ni de entregas ya pasadas.
 - No asumir que el proveedor no entregará. El aviso debe recomendar confirmar la entrega con el proveedor.
 - Nunca mover ni cancelar pedidos automáticamente. Si el proveedor confirma un cambio, la encargada corrige la fecha o marca el pedido como «no se pide».
 - La aplicación no integra un calendario oficial de festivos ni una API externa en la primera versión; la configuración manual es suficiente para el MVP.

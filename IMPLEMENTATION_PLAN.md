@@ -52,20 +52,21 @@
 Sustituye a las antiguas fases 3 (proveedores y catálogo) y 4 (pedidos e historial) e incluye los festivos, que estaban en la Fase 5. Sin catálogo de productos ni líneas de pedido: el contenido de cada pedido se anota en sus notas (ver `SPEC.md`, 3.3 y 3.4). Se implementa en tres bloques; no se pasa al siguiente si falla alguna prueba del anterior.
 
 **Bloque 1 — Base de datos**
-- Crear `suppliers`, `orders` y `holidays`, con RLS y políticas basadas en `private.is_authorized()`. *(Hecho en local: `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con comprobaciones en `supabase/tests/orders_rls_checks.sql` (117 filas: 116 `OK` + 1 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 10. Validado en un PostgreSQL 16 local que imita Supabase y a través de PostgREST 13 en local. **Pendiente:** aplicar la migración y ejecutar las comprobaciones en el proyecto de Supabase real.)*
+- Crear `suppliers`, `orders` y `holidays`, con RLS y políticas basadas en `private.is_authorized()`. *(Hecho en local: `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con comprobaciones en `supabase/tests/orders_rls_checks.sql` (117 filas: 116 `OK` + 1 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 10. Validado en un PostgreSQL 16 local que imita Supabase y a través de PostgREST 13 en local. **Aplicada en el proyecto de Supabase real**, con las comprobaciones correctas según confirmación de la usuaria.)*
 
 **Bloque 2 — Proveedores y festivos** *(hecho en local)*
-- Subpáginas `/pedidos/proveedores` y `/pedidos/festivos`, y entrada «Pedidos» en la navegación. *(Hecho. `/pedidos` muestra por ahora un aviso de que la agenda llegará en el Bloque 3 y enlaza a la configuración.)*
+- Subpáginas `/pedidos/proveedores` y `/pedidos/festivos`, y entrada «Pedidos» en la navegación. *(Hecho. La primera sección se llama «Pedidos» y contiene la agenda y el historial del Bloque 3.)*
 - Altas, edición y desactivación de proveedores: nombre, días de entrega, antelación (0 a 7 días) y notas; aviso de nombre duplicado (sin distinguir mayúsculas, acentos ni espacios, igual que la base de datos). *(Hecho: búsqueda, filtro por estado, resumen del calendario de entrega y preparación en el formulario, reactivación desde «Inactivos». Sin borrado.)*
 - Altas, edición y eliminación de festivos con ámbito nacional, autonómico o local. *(Hecho: vista por años agrupada por meses, aviso de fecha repetida, confirmación al eliminar.)*
-- Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con la migración real). **Pendiente:** aplicar la migración y probar las pantallas contra el proyecto de Supabase real.
+- Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con la migración real). **Pendiente:** probar las pantallas contra el proyecto de Supabase real.
 
-**Bloque 3 — Agenda, historial y avisos** *(pendiente)*
-- Agenda calculada (atrasados de los últimos 7 días, hoy y próximos 14 días), sin crear filas al abrir la app.
-- Guardar un pedido solo al actuar sobre él; gestionar los conflictos de duplicado (409) recargando y avisando.
-- Estados pendiente, preparado y «no se pide»; corregir fechas y notas; eliminar solo pedidos pendientes; pedidos manuales.
-- Avisos de festivo en la fecha de entrega que recomiendan confirmarla, sin mover ni cancelar pedidos.
-- Historial por proveedor y fechas.
+**Bloque 3 — Agenda, historial y avisos** *(hecho en local)*
+- Agenda calculada (atrasados de los últimos 7 días, hoy y próximos 14 días), sin crear filas al abrir la app. *(Hecho: `/pedidos`, vista «Agenda». Atrasados = pendientes con preparación en los 7 días anteriores; hoy siempre visible; después, un grupo por fecha de preparación hasta hoy + 14. Las previsiones se calculan en el navegador (`buildAgenda`, `app/utils/orders.js`); una previsión se oculta si ya hay un pedido del proveedor con esa fecha como entrega prevista de origen o como entrega. Si la página sigue abierta al cambiar de día, la agenda se recalcula sin escribir nada.)*
+- Guardar un pedido solo al actuar sobre él; gestionar los conflictos de duplicado (409) recargando y avisando. *(Hecho: INSERT sin upsert; si la previsión ya se guardó en otro dispositivo, aviso y recarga de la agenda; si la entrega ya está ocupada, error en el campo de fecha.)*
+- Estados pendiente, preparado y «no se pide»; corregir fechas y notas; eliminar solo pedidos pendientes; pedidos manuales. *(Hecho: «Marcar preparado» como acción principal, «No se pide», «Volver a pendiente», «Deshacer» en el aviso, edición de fechas y notas sin cambiar la configuración del proveedor, «Nuevo pedido» para proveedores activos con la preparación propuesta según su antelación, y «Eliminar» solo en pendientes guardados.)*
+- Avisos de festivo en la fecha de entrega que recomiendan confirmarla, sin mover ni cancelar pedidos. *(Hecho: en la agenda, el historial y el formulario; solo en pedidos no descartados con entrega desde hoy. Botón «Cambiar fechas» en el aviso.)*
+- Historial por proveedor y fechas. *(Hecho: vista «Historial» (`?vista=historial`), filtros por proveedor, incluidos los inactivos, y por fecha de entrega; páginas de 20 en el servidor con el total exacto.)*
+- Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con la migración real). **Pendiente:** prueba manual contra el proyecto de Supabase real, en el móvil y en el ordenador.
 
 **Aceptación:** la agenda muestra los pedidos que toca preparar según el calendario de cada proveedor sin duplicarlos al recargar o cambiar de día; los estados y las fechas corregidas se conservan; los proveedores desactivados conservan su historial; los avisos de festivos no afirman que el proveedor no vaya a entregar.
 
