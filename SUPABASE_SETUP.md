@@ -1,6 +1,6 @@
 # Supabase y acceso privado
 
-Guía de configuración de Supabase: acceso privado y autorización (Fase 1, secciones 1 a 8), tablas de trabajadoras y horas extra (Fase 2, sección 9) y tablas de proveedores, pedidos y festivos (Fase 3, sección 10). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
+Guía de configuración de Supabase: acceso privado y autorización (Fase 1, secciones 1 a 8), tablas de trabajadoras y horas extra (Fase 2, sección 9) tablas de proveedores, pedidos y festivos (Fase 3, sección 10) y productos habituales por proveedor (Fase 3, Bloque 4, sección 11). Complementa a `DATA_MODEL.md` (apartado *Seguridad (RLS)*) y a `IMPLEMENTATION_PLAN.md`.
 
 > Los nombres de las opciones del panel de Supabase pueden cambiar ligeramente con el tiempo. Si alguno no coincide, busca el equivalente en *Authentication*.
 
@@ -26,6 +26,9 @@ Guía de configuración de Supabase: acceso privado y autorización (Fase 1, sec
 - **Fase 3, aplicada en el proyecto remoto** (sección 10):
   - Migración `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`: crea `public.suppliers`, `public.orders` y `public.holidays` con su RLS. Aplicada según confirmación de la usuaria.
   - Script de comprobación `supabase/tests/orders_rls_checks.sql`: ejecutado en el proyecto remoto con resultado correcto, según confirmación de la usuaria.
+- **Fase 3, Bloque 4, preparada y pendiente de aplicar en el proyecto remoto** (sección 11):
+  - Migración `supabase/migrations/20261029214500_supplier_products.sql`: crea `public.supplier_products` con su RLS.
+  - Script de comprobación `supabase/tests/supplier_products_rls_checks.sql`.
 
 Sin `NUXT_PUBLIC_SUPABASE_URL` y `NUXT_PUBLIC_SUPABASE_KEY`, la aplicación compila, pero todas las páginas muestran el error 500 *«Falta configurar la conexión con Supabase»*. Es intencionado: no hay acceso de prueba ni autenticación simulada.
 
@@ -731,6 +734,145 @@ curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/orders?select=*" -H "apikey: $K
 
 Con la cuenta autorizada (`T1`), las mismas lecturas devuelven HTTP 200 y las listas (vacías si aún no hay datos). No hace falta probar escrituras con `T1` en el proyecto real: el script de la sección 10.4 ya las comprueba sin dejar datos.
 
+## 11. Fase 3, Bloque 4: productos habituales por proveedor
+
+Archivo: `supabase/migrations/20261029214500_supplier_products.sql`. Solo crea objetos nuevos: **no borra ni modifica datos** y no toca ninguna tabla existente (`profiles`, `employees`, `overtime_entries`, `suppliers`, `orders`, `holidays`). Se aplica **una sola vez** por proyecto, **después** de la migración de la sección 10 (necesita `public.suppliers`).
+
+Crea lo siguiente:
+- **Tabla `public.supplier_products`:** proveedor, nombre, unidad (texto libre), cantidad habitual (`numeric(10,2)`, mayor que 0 y hasta 99999.99) e `is_active`.
+  - Rechaza nombres y unidades vacíos o solo con espacios.
+  - No admite dos productos del mismo proveedor con el mismo nombre sin distinguir mayúsculas, acentos ni espacios (índice `supplier_products_name_unique_idx`, misma regla que los nombres de proveedor); dos proveedores distintos sí pueden repetir nombre.
+  - La clave foránea a `suppliers` usa `on delete restrict`.
+- **Trigger** `supplier_products_set_updated_at`, con `private.set_updated_at()` de la Fase 1.
+- **RLS:**
+  - `anon` no tiene ningún privilegio.
+  - `authenticated`, **siempre que `private.is_authorized()` sea cierto**, puede leer y crear productos y modificar **solo** `name`, `unit`, `usual_quantity` e `is_active`: un producto no puede cambiar de proveedor.
+  - Nadie puede borrar productos desde la API (se desactivan) ni tiene `TRUNCATE`.
+
+### 11.1 Antes de empezar
+
+Las mismas condiciones que en la sección 5: selector **Role** en **`postgres`** y consultas de verificación **una a una**.
+
+**Comprobación previa:**
+
+```sql
+select to_regclass('public.supplier_products') as tabla_supplier_products,
+       to_regclass('public.suppliers') as tabla_suppliers,
+       to_regprocedure('private.is_authorized()') as funcion_is_authorized,
+       to_regprocedure('private.set_updated_at()') as funcion_set_updated_at;
+```
+
+- **La primera columna vacía (`NULL`) y las otras tres con valor:** se puede aplicar la migración.
+- **`tabla_supplier_products` con valor:** **no apliques la migración.** Puede que ya esté aplicada; compruébalo con las consultas del paso 6 de la sección 11.2.
+- **`tabla_suppliers` vacía:** falta la migración de la sección 10. Aplícala antes.
+- **Alguna función vacía:** falta la migración de la Fase 1 (sección 5).
+
+### 11.2 Aplicar la migración (SQL Editor)
+
+1. Abre **SQL Editor → New query** y comprueba que el selector **Role** está en `postgres`.
+2. Escribe `begin;` en la primera línea.
+3. Pega debajo el contenido completo de `20261029214500_supplier_products.sql`.
+4. Escribe `commit;` en la última línea.
+5. Ejecuta (*Run*) una sola vez. Lo esperado es «Success. No rows returned».
+6. Verifica el resultado con estas cinco consultas, **una a una**:
+
+   ```sql
+   select c.relname, c.relrowsecurity as rls
+   from pg_class c
+   where c.oid = 'public.supplier_products'::regclass;
+   ```
+   Esperado: una fila, `supplier_products`, con `rls = true`.
+
+   ```sql
+   select policyname, cmd, roles
+   from pg_policies
+   where tablename = 'supplier_products'
+   order by 1;
+   ```
+   Esperado: tres filas, todas con `roles = {authenticated}`: `supplier_products_insert_authorized` (INSERT), `supplier_products_select_authorized` (SELECT) y `supplier_products_update_authorized` (UPDATE). **Ninguna de DELETE.**
+
+   ```sql
+   select grantee, string_agg(privilege_type, ', ' order by privilege_type) as privilegios
+   from information_schema.role_table_grants
+   where table_schema = 'public' and table_name = 'supplier_products'
+     and grantee in ('anon', 'authenticated')
+   group by 1;
+   ```
+   Esperado: una fila, `authenticated` · `INSERT, SELECT` (sin `UPDATE` de tabla: va por columnas, consulta siguiente). Ninguna de `anon`.
+
+   ```sql
+   select grantee, string_agg(column_name, ', ' order by column_name) as columnas
+   from information_schema.role_column_grants
+   where table_schema = 'public' and table_name = 'supplier_products'
+     and privilege_type = 'UPDATE' and grantee in ('anon', 'authenticated')
+   group by 1;
+   ```
+   Esperado: una fila, `authenticated` · `is_active, name, unit, usual_quantity`.
+
+   ```sql
+   select tgname
+   from pg_trigger
+   where not tgisinternal and tgrelid = 'public.supplier_products'::regclass;
+   ```
+   Esperado: `supplier_products_set_updated_at`.
+
+Si usas la CLI de Supabase más adelante, marca esta migración como aplicada: `npx supabase migration repair --status applied 20261029214500`.
+
+### 11.3 Si la migración da un error
+
+Como en la sección 5, la transacción se anula entera y **no se aplica nada**.
+
+1. Copia el mensaje de error completo y **no** vuelvas a ejecutar la migración todavía.
+2. En una consulta nueva, con el rol `postgres`, repite la comprobación previa de la sección 11.1. Si aparece *current transaction is aborted*, ejecuta `rollback;` sola y repítela.
+3. Si `tabla_supplier_products` sigue vacía, no ha quedado nada aplicado: corrige la causa y repite la sección 11.2 desde el paso 1.
+
+Errores habituales:
+- *relation "public.suppliers" does not exist*: falta la migración de la sección 10.
+- *relation "supplier_products" already exists*: la migración ya estaba aplicada.
+- *permission denied for schema public* o *for schema private*: el selector Role no está en `postgres`.
+
+### 11.4 Comprobaciones SQL
+
+Archivo: `supabase/tests/supplier_products_rls_checks.sql`. Se usa igual que los de las secciones 7.1, 9.4 y 10.4: **SQL Editor → New query** con el rol **`postgres`**, sustituye en `CONFIGURACIÓN` los UUID de `v_authorized` (obligatorio) y `v_unauthorized` (recomendado) **solo en el SQL Editor**, y ejecuta el script **entero de una vez**. El aviso de «operaciones destructivas» se puede confirmar: todas las escrituras se hacen sobre filas temporales que el propio script deshace.
+
+**Cómo leer el resultado.** Se muestra una tabla de **57 filas**:
+- **56 comprobaciones** cuyo `resultado` debe empezar por **`OK`** (`OK (denegado)`, `OK (0 filas afectadas)` y `OK (rechazado, <código>)` también son correctos, como en la sección 10.4).
+- **1 fila informativa** («Segunda cuenta: existe en auth.users»), que empieza por **`INFO`**.
+- **Cualquier fila con `FALLO`** indica un problema. No sigas adelante.
+
+Qué comprueba:
+- **Configuración:** RLS activo; políticas exactas y basadas en `is_authorized()`; privilegios de `anon`, `authenticated` (incluido el `UPDATE` por columnas) y `PUBLIC`; clave foránea con `ON DELETE RESTRICT`; índice único por proveedor; trigger.
+- **Sin sesión (`anon`):** no puede leer, crear, modificar, borrar ni vaciar la tabla.
+- **Cuenta no autorizada:** no ve ningún producto, no puede crear, borrar, vaciar, desactivar RLS ni cambiar políticas, y sus modificaciones no afectan a nada.
+- **Cuenta autorizada:** crea productos (también con decimales), repite nombre en otro proveedor, admite «Peña» y «Pena», edita, desactiva y reactiva; no puede borrar productos, cambiarlos de proveedor, fijar `updated_at` o `created_at` ni vaciar la tabla.
+- **Restricciones:** nombre o unidad vacíos o nulos, cantidad 0, negativa, de 100000 o nula, cambiar la cantidad a 0, producto repetido en el mismo proveedor (mayúsculas, espacios, acentos y acento combinado), renombrar con el nombre de otro, proveedor inexistente; como `postgres`, no se puede borrar un proveedor con productos.
+- **Limpieza:** la última fila confirma que no queda ningún dato de prueba.
+
+Para confirmarlo, después del script puedes ejecutar:
+
+```sql
+select count(*) as filas_de_prueba
+from public.suppliers
+where name like '%supplier_products_rls_checks.sql%';
+```
+
+Esperado: `0`.
+
+### 11.5 Comprobaciones a través de la API (opcional)
+
+Igual que la sección 7.2, con las mismas variables. Con la segunda cuenta (`T2`, no autorizada):
+
+```bash
+# Lectura → esperado: HTTP 200 y []
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/supplier_products?select=*" -H "apikey: $KEY" -H "Authorization: Bearer $T2"
+```
+
+Sin sesión (solo la clave publicable) → esperado: HTTP 401, código 42501:
+
+```bash
+curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/supplier_products?select=*" -H "apikey: $KEY"
+```
+
 ## Limitaciones conocidas
 
 - La cookie de sesión dura 8 horas desde la última renovación (valor por defecto del módulo). Si la app no se usa durante más tiempo, habrá que volver a iniciar sesión.
@@ -742,4 +884,5 @@ Con la cuenta autorizada (`T1`), las mismas lecturas devuelven HTTP 200 y las li
   - **Fase 1:** la migración y `authorization_checks.sql` se han ejecutado también en el proyecto remoto (31 filas correctas). Falta confirmar la sección 7.2.
   - **Fase 2:** la migración está aplicada en el proyecto remoto según confirmación de la usuaria. Falta confirmar que `staff_rls_checks.sql` se ha ejecutado allí con 66 `OK` + 1 `INFO`: hasta entonces, su seguridad no se puede dar por validada en el proyecto real (sección 9.4).
   - **Fase 3:** la migración y `orders_rls_checks.sql` se han probado solo en local (117 filas: 116 `OK` + 1 `INFO`), también con la columna `name` en configuración regional `C`, también a través de PostgREST 13 con tokens de prueba. Se ha comprobado además que el script detecta con `FALLO` nueve versiones de la migración con errores introducidos a propósito (privilegios de `anon`, borrado de pedidos sin condición de estado, `UPDATE` de todas las columnas, falta del trigger de `prepared_at`, de un único, de RLS, del índice de nombre o del rango de días, y una política abierta) y el índice de nombre anterior, que distinguía acentos. Después se aplicaron en el proyecto remoto (secciones 10.2 y 10.4) con resultado correcto, según confirmación de la usuaria.
+  - **Fase 3, Bloque 4:** la migración de productos y `supplier_products_rls_checks.sql` se han probado solo en local (57 filas: 56 `OK` + 1 `INFO`). El script detecta con `FALLO` ocho versiones de la migración con errores introducidos a propósito (privilegios de `anon`, `DELETE` concedido, `UPDATE` de todas las columnas, índice no único o sin proveedor, cantidad sin rango, política abierta y RLS desactivado). **No** se han ejecutado en el proyecto remoto: su seguridad solo se puede dar por validada después de las secciones 11.2 y 11.4.
 - **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.

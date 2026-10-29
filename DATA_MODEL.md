@@ -4,6 +4,7 @@
 - `profiles`: implementada y aplicada en el proyecto de Supabase (Fase 1).
 - `employees` y `overtime_entries`: implementadas y aplicadas en el proyecto de Supabase (Fase 2); falta confirmar la ejecución de `staff_rls_checks.sql` allí.
 - `suppliers`, `orders` y `holidays`: implementadas en la migración `20261028221500_suppliers_orders_holidays.sql`, aplicada en el proyecto de Supabase con sus comprobaciones correctas (Fase 3).
+- `supplier_products`: implementada en la migración `20261029214500_supplier_products.sql`, preparada y **pendiente de aplicar** en el proyecto remoto (Fase 3, Bloque 4).
 - Resto de tablas: propuesta inicial; revisar antes de crear sus migraciones.
 
 ## Convenciones
@@ -86,9 +87,27 @@ Decisiones:
 - **No se borran:** los clientes no tienen el privilegio `DELETE`. Se desactivan con `is_active = false`.
 - **Reglas que aplica solo la aplicación:** nombre de 80 caracteres como máximo y notas de 1000; un proveedor inactivo no genera previsiones ni admite pedidos nuevos.
 
-### Catálogo de productos y líneas de pedido (descartados)
+### `supplier_products`
+Productos habituales de cada proveedor (Bloque 4; ver `SPEC.md`, 3.3).
+- `id uuid primary key default gen_random_uuid()`
+- `supplier_id uuid not null references suppliers(id) on delete restrict`
+- `name text not null`, con `check (name ~ '[^[:space:]]')`
+- `unit text not null`, con `check (unit ~ '[^[:space:]]')`: unidad en texto libre.
+- `usual_quantity numeric(10,2) not null`, con `check (usual_quantity > 0 and usual_quantity <= 99999.99)`
+- `is_active boolean not null default true`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
-Las tablas `supplier_products` y `order_lines` de la propuesta inicial **no se crean**: el MVP no tiene catálogo de productos, unidades, cantidades habituales ni precios (ver `SPEC.md`, 3.3). El contenido de cada pedido se anota en `orders.notes`.
+Decisiones:
+- **Nombre único por proveedor:** índice único `supplier_products_name_unique_idx` sobre `(supplier_id, clave normalizada del nombre)`, con la misma clave que `suppliers_name_unique_idx` (sin mayúsculas, acentos de las vocales ni espacios repetidos; «ñ» y «ç» se conservan). Incluye los inactivos. Dos proveedores pueden tener productos con el mismo nombre. El índice empieza por `supplier_id`, así que también sirve para listar los productos de un proveedor y para la clave foránea.
+- **No se borran:** los clientes no tienen el privilegio `DELETE`. Se desactivan con `is_active = false`. Así, cuando existan líneas de pedido, ningún pedido se quedará sin su producto (su clave foránea deberá usar `on delete restrict`).
+- **No cambian de proveedor:** `authenticated` solo puede modificar `name`, `unit`, `usual_quantity` e `is_active` (privilegio `UPDATE` por columnas).
+- **Cantidad habitual:** referencia inicial para preparar pedidos, no una obligación ni stock. Con decimales (2,5 kg); la app admite coma o punto y como máximo dos decimales.
+- **Reglas que aplica solo la aplicación:** nombre de 80 caracteres como máximo y unidad de 20.
+
+### Líneas de pedido (todavía no)
+
+La tabla `order_lines` de la propuesta inicial **no se crea** por ahora: el contenido de cada pedido se sigue anotando en `orders.notes`. Si más adelante se añade, cada línea referenciará `supplier_products` con `on delete restrict` y guardará su propia cantidad (la habitual solo será el valor inicial).
 
 ### `orders`
 - `id uuid primary key default gen_random_uuid()`
@@ -192,6 +211,7 @@ Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar auten
 | `suppliers` | ninguno | `SELECT`, `INSERT`, `UPDATE` |
 | `orders` | ninguno | `SELECT`, `INSERT`; `UPDATE` solo de `delivery_date`, `prepare_date`, `status` y `notes`; `DELETE` solo de pedidos con `status = 'pending'` |
 | `holidays` | ninguno | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `supplier_products` | ninguno | `SELECT`, `INSERT`; `UPDATE` solo de `name`, `unit`, `usual_quantity` e `is_active` (Bloque 4) |
 
 Ninguno de los dos roles tiene `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Una cuenta autenticada pero no autorizada tiene los privilegios de tabla, pero las políticas no le dejan ver ni crear filas. Sus `UPDATE` y `DELETE` no afectan a ninguna fila (la API responde `200` con una lista vacía).
 
@@ -227,6 +247,7 @@ Si la tabla usa `updated_at`, se añade también el trigger con `private.set_upd
 - `authorization_checks.sql`: `profiles` y `private.is_authorized()` (Fase 1). No se amplía con tablas nuevas, para que su resultado verificado no cambie.
 - `staff_rls_checks.sql`: `employees` y `overtime_entries` (Fase 2).
 - `orders_rls_checks.sql`: `suppliers`, `orders` y `holidays` (Fase 3).
+- `supplier_products_rls_checks.sql`: `supplier_products` (Fase 3, Bloque 4).
 - Las fases siguientes añaden su propio archivo.
 
 Cada script comprueba la configuración (RLS, políticas, privilegios, restricciones) y simula peticiones sin sesión, con una sesión no autorizada y con la cuenta autorizada. Si necesita datos, los crea y los deshace al terminar. No deja cambios en la base de datos. Los UUID reales se escriben solo en la copia que se pega en el SQL Editor, nunca en el archivo versionado.
@@ -239,6 +260,7 @@ Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.rol
 - `orders(prepare_date)`: agenda. Creado en la migración de la Fase 3 (`orders_prepare_date_idx`).
 - `orders(delivery_date)`: historial. Creado en la migración de la Fase 3 (`orders_delivery_date_idx`).
 - `orders(supplier_id, delivery_date)`: lo cubre la restricción única `orders_supplier_delivery_unique`.
+- `supplier_products(supplier_id, …)`: lo cubre el índice único `supplier_products_name_unique_idx`.
 - `employee_absences(employee_id, start_date, end_date)`
 
 ## Decisiones pendientes antes de migrar
