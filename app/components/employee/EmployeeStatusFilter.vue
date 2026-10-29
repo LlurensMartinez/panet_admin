@@ -2,6 +2,8 @@
 // Filtro por estado que hace también de resumen: cada opción muestra cuántos
 // empleados hay (datos reales de Supabase). Son botones de opción nativos,
 // así que funcionan con el teclado (flechas) y con lectores de pantalla.
+// Por debajo de 360 px el relleno y la separación se reducen para que las
+// tres opciones quepan sin desbordar; desde 360 px el aspecto no cambia.
 const model = defineModel({ type: String, required: true })
 
 const props = defineProps({
@@ -39,7 +41,7 @@ const options = computed(() => [
           :value="option.value"
         >
         <span
-          class="flex h-9 items-center justify-center gap-2 rounded-md px-3.5 text-sm font-medium text-muted transition-colors hover:text-highlighted peer-checked:bg-default peer-checked:text-highlighted peer-checked:shadow-xs peer-checked:ring peer-checked:ring-default peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary"
+          class="flex h-9 items-center justify-center gap-1.5 rounded-md px-1.5 text-sm font-medium min-[360px]:gap-2 min-[360px]:px-3.5 text-muted transition-colors hover:text-highlighted peer-checked:bg-default peer-checked:text-highlighted peer-checked:shadow-xs peer-checked:ring peer-checked:ring-default peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary"
         >
           {{ option.label }}
           <span
