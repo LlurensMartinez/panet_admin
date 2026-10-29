@@ -1,12 +1,13 @@
 <script setup>
-// Navegación entre las secciones de Pedidos: agenda, proveedores y festivos.
+// Navegación entre las secciones de Pedidos: pedidos (agenda e historial),
+// proveedores y festivos.
 // Son páginas distintas (enlaces, no pestañas), con el mismo aspecto que las
 // pestañas de Horas extra. En móvil se ocultan los iconos para que las tres
 // quepan sin cortarse.
 const route = useRoute()
 
 const SECTIONS = [
-  { label: 'Agenda', to: '/pedidos', icon: 'i-lucide-calendar-days' },
+  { label: 'Pedidos', to: '/pedidos', icon: 'i-lucide-calendar-days' },
   { label: 'Proveedores', to: '/pedidos/proveedores', icon: 'i-lucide-truck' },
   { label: 'Festivos', to: '/pedidos/festivos', icon: 'i-lucide-calendar-x-2' },
 ]
