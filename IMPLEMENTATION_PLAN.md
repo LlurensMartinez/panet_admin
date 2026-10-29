@@ -49,7 +49,7 @@
 **Aceptación:** los totales coinciden con pruebas manuales y la duración se guarda en minutos enteros.
 
 ## Fase 3 — Proveedores, pedidos y festivos
-Sustituye a las antiguas fases 3 (proveedores y catálogo) y 4 (pedidos e historial) e incluye los festivos, que estaban en la Fase 5. Sin catálogo de productos ni líneas de pedido: el contenido de cada pedido se anota en sus notas (ver `SPEC.md`, 3.3 y 3.4). Se implementa en tres bloques; no se pasa al siguiente si falla alguna prueba del anterior.
+Sustituye a las antiguas fases 3 (proveedores y catálogo) y 4 (pedidos e historial) e incluye los festivos, que estaban en la Fase 5. Sin líneas de pedido: el contenido de cada pedido se anota en sus notas (ver `SPEC.md`, 3.4). Los productos habituales por proveedor se añadieron después, en el Bloque 4. Se implementa por bloques; no se pasa al siguiente si falla alguna prueba del anterior.
 
 **Bloque 1 — Base de datos**
 - Crear `suppliers`, `orders` y `holidays`, con RLS y políticas basadas en `private.is_authorized()`. *(Hecho en local: `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con comprobaciones en `supabase/tests/orders_rls_checks.sql` (117 filas: 116 `OK` + 1 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 10. Validado en un PostgreSQL 16 local que imita Supabase y a través de PostgREST 13 en local. **Aplicada en el proyecto de Supabase real**, con las comprobaciones correctas según confirmación de la usuaria.)*
@@ -70,7 +70,21 @@ Sustituye a las antiguas fases 3 (proveedores y catálogo) y 4 (pedidos e histor
 
 **Aceptación:** la agenda muestra los pedidos que toca preparar según el calendario de cada proveedor sin duplicarlos al recargar o cambiar de día; los estados y las fechas corregidas se conservan; los proveedores desactivados conservan su historial; los avisos de festivos no afirman que el proveedor no vaya a entregar.
 
-**Para una fase futura:** antelaciones distintas según el día de entrega (hoy, una por proveedor; cada pedido puede corregir su fecha de preparación).
+**Bloque 4 — Productos habituales por proveedor** *(hecho en local; migración pendiente de aplicar)*
+Decisión revisada: el catálogo, que había quedado fuera del MVP, se incorpora como productos habituales de cada proveedor (`SPEC.md`, 3.3).
+- Tabla `supplier_products` con RLS y políticas basadas en `private.is_authorized()`. *(Preparada: `supabase/migrations/20261029214500_supplier_products.sql`, con comprobaciones en `supabase/tests/supplier_products_rls_checks.sql` (57 filas: 56 `OK` + 1 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 11. Validada en un PostgreSQL 16 local. **Pendiente:** aplicarla y ejecutar las comprobaciones en el proyecto de Supabase real.)*
+- Ficha de cada proveedor (`/pedidos/proveedores/<id>`, se llega pulsando su nombre en la lista o desde «Productos» en el menú del móvil) con sus productos: alta, edición y desactivación/activación con el mismo diseño que Proveedores y Empleados. Sin borrado. *(Hecho en local, con pruebas unitarias y de extremo a extremo.)*
+- La agenda, los pedidos y el historial no cambian. *(Comprobado con sus pruebas de regresión.)*
+
+**Bloque 5 — Resumen de pedidos en Inicio** *(hecho en local)*
+- Inicio (`/`) muestra los pedidos pendientes que toca preparar hoy (con los atrasados de la agenda, marcados) y mañana, agrupados por proveedor, con sus productos habituales activos, la cantidad habitual y la unidad (`SPEC.md`, 3.1). *(Hecho: `app/utils/home.js` (`buildHomeSummary`, que parte de `buildAgenda`), `app/composables/useActiveProducts.js` (solo lectura), `app/components/home/` y `app/pages/index.vue`.)*
+- Solo lectura: abrir o recargar Inicio no escribe en Supabase. Sin tablas ni migraciones nuevas. *(Comprobado en las pruebas de extremo a extremo: 0 escrituras y la base de datos sin cambios.)*
+- Estados de carga, error con «Reintentar» (pedidos o proveedores), avisos parciales (productos o festivos) y vacíos. Diseño para móvil (320 px en adelante), tableta y ordenador.
+- Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con las migraciones reales). **Pendiente:** probarlo contra el proyecto de Supabase real; requiere la migración de productos del Bloque 4 (sin ella, Inicio muestra los pedidos con un aviso de que faltan los productos).
+
+**Para una fase futura:**
+- Antelaciones distintas según el día de entrega (hoy, una por proveedor; cada pedido puede corregir su fecha de preparación).
+- Proponer los productos habituales al preparar un pedido, con cantidades modificables por pedido (líneas de pedido).
 
 ## Fase 4 — (integrada en la Fase 3)
 Los pedidos y su historial forman parte de la Fase 3. Se mantiene la numeración del resto de fases.
@@ -86,7 +100,7 @@ Los festivos y sus avisos se han trasladado a la Fase 3.
 **Aceptación:** se pueden consultar horarios y ausencias.
 
 ## Fase 6 — Dashboard y pulido responsive
-- Mostrar pedidos de hoy, pedidos pendientes, próximas entregas y resumen de horas extra.
+- Mostrar pedidos de hoy, pedidos pendientes, próximas entregas y resumen de horas extra. *(Pedidos de hoy y mañana con sus productos: hecho en el Bloque 5 de la Fase 3. Pendiente: resumen de horas extra en Inicio.)*
 - Ajustar navegación y formularios para móvil.
 - Ajustar tablas y calendarios para ordenador.
 - Revisar estados de carga, errores, confirmaciones y estados vacíos.

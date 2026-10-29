@@ -1,6 +1,6 @@
 # Gestión de tienda — Especificación funcional
 
-**Versión:** 0.2 (pedidos sin catálogo de productos)  
+**Versión:** 0.3 (productos habituales por proveedor; pedidos con notas libres)  
 **Estado:** Borrador para validar antes de implementar  
 **Objetivo:** Aplicación web privada para que la encargada gestione los pedidos a proveedores y aspectos concretos del personal de una única tienda.
 
@@ -37,6 +37,16 @@ Mostrar un resumen práctico:
 
 Evitar estadísticas que no ayuden a tomar una acción.
 
+**Implementado (Bloque 5): resumen de pedidos de hoy y mañana.** Inicio (`/`) muestra, solo para consultar:
+- **Hoy:** los pedidos pendientes que se preparan hoy y los atrasados de la agenda (pendientes de los 7 días anteriores), marcados como atrasados. **Mañana:** los pendientes que se preparan mañana. «Hoy» es el día de la tienda (Europe/Madrid).
+- Una tarjeta por proveedor (sin repetirlo en la misma sección) con sus entregas, las notas del pedido, si es manual o tiene la fecha cambiada, el aviso de festivo de la entrega y sus productos habituales **activos** con la cantidad habitual y la unidad. Un proveedor sin productos activos aparece igualmente, con un mensaje y un enlace a su ficha.
+- Se calcula con la misma lógica que la agenda (`buildAgenda`): calendario y antelación de cada proveedor, pedidos manuales y fechas cambiadas. Los pedidos preparados y los «no se pide» no se muestran.
+- Las cantidades son las habituales del producto: orientativas, no confirmadas. Inicio no las modifica ni las inventa.
+- Abrir o recargar Inicio no crea, modifica ni borra nada. Los pedidos se gestionan en la agenda («Ver agenda completa» y un enlace en cada proveedor).
+- Si fallan los productos o los festivos, los pedidos se muestran igualmente con un aviso y «Reintentar»; si fallan los pedidos o los proveedores, se muestra un error con «Reintentar».
+
+Quedan pendientes para la Fase 6 el resumen de horas extra del periodo actual y las próximas entregas más allá de mañana (hoy se consultan en la agenda y en «Horas extra»).
+
 ### 3.2 Proveedores
 
 Cada proveedor tendrá:
@@ -52,9 +62,17 @@ Los proveedores no se eliminan: se desactivan. Un proveedor inactivo no genera p
 
 La antelación es única por proveedor. Si en el futuro hiciera falta una antelación distinta según el día de entrega (por ejemplo, pedir el viernes para el lunes y el martes para el jueves), se podrá incorporar en una fase posterior. Mientras tanto, la fecha de preparación de cada pedido se puede corregir individualmente.
 
-### 3.3 Catálogo de productos (fuera del MVP)
+### 3.3 Productos habituales por proveedor
 
-No hay catálogo de productos, unidades, cantidades habituales ni precios. El contenido de cada pedido se anota en sus notas, en texto libre. Un catálogo podría estudiarse en una fase futura si la encargada lo necesita.
+Decisión revisada en el Bloque 4 (antes, el catálogo quedaba fuera del MVP). Cada proveedor puede tener varios productos habituales:
+- Nombre (obligatorio). No puede repetirse dentro del mismo proveedor, sin distinguir mayúsculas, acentos ni espacios repetidos (misma regla que los nombres de proveedor). Dos proveedores distintos sí pueden tener un producto con el mismo nombre.
+- Unidad de medida en texto libre (unidades, cajas, kg, sacos…).
+- Cantidad habitual: mayor que 0, hasta 99.999,99 y con dos decimales como máximo. Es solo una referencia inicial para preparar pedidos, no una obligación.
+- Estado activo/inactivo.
+
+Se consultan, añaden, editan y desactivan/reactivan desde la ficha de cada proveedor (`/pedidos/proveedores/<id>`), a la que se llega pulsando su nombre en la lista. Los productos no se eliminan: se desactivan, para que ningún pedido que los use en el futuro se quede sin su producto. Un producto no puede pasar a otro proveedor.
+
+Todavía no hay líneas de pedido ni precios: el contenido de cada pedido se sigue anotando en sus notas. En una fase posterior, los productos habituales podrán proponerse al preparar un pedido, con su cantidad habitual modificable para ese pedido concreto.
 
 ### 3.4 Pedidos
 
@@ -154,7 +172,7 @@ Los cambios guardados en un dispositivo deben estar disponibles en el otro tras 
 - Cuentas para trabajadoras o responsable de zona.
 - Nóminas, pagos o compensaciones.
 - Facturación, contabilidad, ventas, clientes o inventario/stock.
-- Catálogo de productos, cantidades habituales, líneas de pedido y precios.
+- Líneas de pedido con cantidades por producto (por ahora, el contenido va en las notas del pedido) y precios.
 - Integración automática con proveedores.
 - Lectura de fotografías o IA.
 - Aplicación nativa para iOS/Android.
