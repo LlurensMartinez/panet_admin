@@ -45,7 +45,7 @@ app/
   middleware/auth.global.js  # exige sesión verificada y cuenta autorizada salvo en /login
   pages/login.vue            # inicio de sesión (sin registro)
   pages/acceso-denegado.vue  # cuenta con sesión pero sin autorización
-  pages/index.vue            # página privada provisional
+  pages/index.vue            # Inicio: resumen de pedidos de hoy y mañana (solo lectura)
   utils/                     # autorización, mensajes de error de acceso y redirección segura
 supabase/
   migrations/                # migraciones SQL versionadas (se aplican a mano: ver SUPABASE_SETUP.md)
