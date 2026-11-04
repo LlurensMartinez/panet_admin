@@ -75,15 +75,20 @@ Los totales semanales/mensuales se calculan a partir de los registros filtrados 
 - `name text not null`, con `check (name ~ '[^[:space:]]')`
 - `delivery_weekdays smallint[] not null default '{}'`: días habituales de entrega, 1 = lunes … 7 = domingo (ISO 8601). Restricción: una dimensión, sin nulos y con valores de 1 a 7.
 - `order_lead_days smallint not null default 1`, con `check (order_lead_days between 0 and 7)`: antelación por defecto con la que se prepara el pedido (0 = el mismo día).
+- `lead_days_overrides jsonb not null default '{}'`: antelación distinta según el día de entrega, `{"<día ISO 1-7>": <0-7>}` (por ejemplo `{"1": 3}`). Los días que no aparecen usan `order_lead_days`. Restricción `suppliers_lead_days_overrides_valid` (función inmutable `private.is_valid_lead_days_overrides`): un objeto, claves que son días de entrega y valores enteros de 0 a 7. *(Migración `20261104130000_supplier_schedule_rules.sql`.)*
+- `delivery_every_weeks smallint not null default 1`: 1 = cada semana, 2 = cada dos semanas (`check in (1, 2)`).
+- `delivery_anchor_date date null`: solo en quincenales, una fecha de entrega de referencia; tocan las semanas (de lunes a domingo) a un número par de semanas de ella. Obligatoria si `delivery_every_weeks = 2` y vacía si es 1.
+- `order_mode text not null default 'scheduled'`: `scheduled` (días fijos: la agenda genera previsiones) u `on_demand` (a demanda: sin previsiones; los días de entrega son los días posibles). Un proveedor a demanda no puede ser quincenal.
+- `order_deadline time null`: hora límite (hora de la tienda) para hacer el pedido el día que se prepara; sin segundos.
 - `notes text null`
 - `is_active boolean not null default true`
-- `created_at timestamptz not null default now()`
+- `created_at timestamptz not null default now()`. La agenda no genera previsiones con preparación anterior a este día (hora de la tienda).
 - `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
 Decisiones:
 - **Nombre único:** índice único `suppliers_name_unique_idx` sobre una clave normalizada del nombre: `normalize(name, NFC)`, espacios repetidos reducidos a uno y recortados, acentos de las vocales quitados con `translate` (agudos, graves, circunflejos y diéresis, en mayúsculas y minúsculas) y `lower`. No distingue mayúsculas, acentos ni espacios: «Panadería Sol» y «panaderia  sol» son el mismo proveedor. «ñ» y «ç» se consideran letras propias («Peña» y «Pena» son distintos). Incluye a los inactivos (se reactiva el existente en lugar de duplicarlo). Solo usa funciones incluidas en PostgreSQL, sin extensiones, y funciona igual con la configuración regional `C`. La app aplica la misma regla (`getSupplierNameKey` en `app/utils/suppliers.js`) para avisar antes de guardar; con letras fuera de esa lista (por ejemplo «Õ») puede ser algo más estricta que la base de datos, nunca menos.
 - **Días de entrega:** la base de datos garantiza el rango; la app los guarda ordenados y sin repetir. Una lista vacía significa que el proveedor no genera previsiones, aunque admite pedidos manuales.
-- **Una sola antelación por proveedor** (decisión aprobada para el MVP). Distintas antelaciones según el día de entrega podrán incorporarse en una fase futura. Mientras tanto, cada pedido puede tener su propia fecha de preparación.
+- **Calendario** (migración `20261104130000`): antelación general con excepciones por día, frecuencia semanal o quincenal, modo de pedido (días fijos o a demanda) y hora límite. Son columnas de `suppliers` (y no una tabla aparte) para que el proveedor y su calendario se guarden en una sola escritura, sin estados a medias. Los valores por defecto reproducen el comportamiento anterior. La app solo guarda las antelaciones por día que difieren de la general. Cada pedido puede seguir teniendo su propia fecha de preparación.
 - **No se borran:** los clientes no tienen el privilegio `DELETE`. Se desactivan con `is_active = false`.
 - **Reglas que aplica solo la aplicación:** nombre de 80 caracteres como máximo y notas de 1000; un proveedor inactivo no genera previsiones ni admite pedidos nuevos.
 
@@ -123,7 +128,7 @@ La tabla `order_lines` de la propuesta inicial **no se crea** por ahora: el cont
 - Únicos: `orders_supplier_delivery_unique (supplier_id, delivery_date)` y `orders_supplier_scheduled_unique (supplier_id, scheduled_delivery_date)`.
 
 Decisiones:
-- **Agenda calculada, no guardada.** Las previsiones se calculan en la app a partir de `suppliers` (días de entrega y antelación) para los próximos 14 días y los 7 anteriores. Solo se guarda una fila cuando la encargada actúa sobre una previsión (marcarla como preparada o «no se pide», corregir fechas, escribir notas) o crea un pedido a mano. Abrir la app, recargarla o cambiar de día no escribe nada.
+- **Agenda calculada, no guardada.** Las previsiones se calculan en la app a partir de `suppliers` (días de entrega, antelación de cada día, frecuencia y modo; los proveedores a demanda no generan previsiones, y no se prevé nada anterior al alta del proveedor) para los próximos 14 días y los 7 anteriores. Solo se guarda una fila cuando la encargada actúa sobre una previsión (marcarla como preparada o «no se pide», corregir fechas, escribir notas) o crea un pedido a mano. Abrir la app, recargarla o cambiar de día no escribe nada.
 - **Sin duplicados.** Como mucho un pedido por proveedor y fecha de entrega, y cada previsión se convierte como mucho en un pedido (dos dispositivos que actúan a la vez sobre la misma previsión: el segundo recibe `23505`, la API responde 409, y la app recarga y avisa). La app usa `insert` y no `upsert`, para no sobrescribir cambios hechos desde otro dispositivo.
 - **Pedido movido.** `scheduled_delivery_date` no cambia al corregir las fechas, así la previsión original no vuelve a aparecer. Una previsión se oculta si ya existe un pedido del mismo proveedor con esa fecha como `scheduled_delivery_date` o como `delivery_date`.
 - **Estados:** `pending` (pendiente), `prepared` (preparado) y `skipped` (no se pide: descarta una previsión, por ejemplo por un festivo; no cuenta como pendiente ni atrasado). Desde cualquier estado se puede volver a `pending`.

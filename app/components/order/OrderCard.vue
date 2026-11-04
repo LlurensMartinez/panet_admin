@@ -30,6 +30,15 @@ const prepareText = computed(() => formatShortDate(props.item.prepare_date, prop
 // está atrasado. En el historial se muestra siempre.
 const showPrepare = computed(() => props.context === 'history' || isOverdue.value)
 const holidayWarning = computed(() => props.item.holidayWarning ?? null)
+// Hora límite del proveedor (solo en la agenda y en pedidos pendientes).
+const clock = useMinuteClock()
+// En los atrasados ya se avisa con «Atrasado».
+const deadline = computed(() => props.context === 'agenda' && !isOverdue.value ? getOrderDeadline(props.item, props.today, clock.value) : null)
+const deadlineText = computed(() => {
+  if (!deadline.value) return ''
+  const shown = `${Number(deadline.value.time.slice(0, 2))}:${deadline.value.time.slice(3)}`
+  return deadline.value.passed ? `Hora límite pasada (${shown})` : describeDeadline(deadline.value.time)
+})
 const preparedText = computed(() => describePreparedAt(props.item.prepared_at, props.today))
 const itemLabel = computed(() => `${name.value}, entrega ${deliveryText.value}`)
 const holidayActions = computed(() => [{
@@ -54,11 +63,15 @@ const menuItems = computed(() => {
     items.push({ label: 'Volver a pendiente', icon: 'i-lucide-undo-2', onSelect: () => emit('reopen', props.item) })
   }
   const groups = [items]
-  if (canDelete.value) {
-    groups.push([{ label: 'Eliminar', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => emit('delete', props.item) }])
-  }
+  if (canDelete.value) groups.push(deleteGroup.value)
   return groups
 })
+
+const deleteGroup = computed(() => [{ label: 'Eliminar', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => emit('delete', props.item) }])
+// En pantallas anchas «Editar», «No se pide» y «Volver a pendiente» ya están a
+// la vista: el menú solo ofrece lo que no se ve (eliminar), y si no hay nada
+// más, no se muestra.
+const wideMenuItems = computed(() => canDelete.value ? [deleteGroup.value] : [])
 </script>
 
 <template>
@@ -80,7 +93,7 @@ const menuItems = computed(() => {
           >(proveedor inactivo)</span>
         </p>
         <p class="text-sm text-muted">
-          Entrega: <span class="font-medium text-default">{{ deliveryText }}</span>
+          Entrega: <span class="whitespace-nowrap font-medium text-default">{{ deliveryText }}</span>
           <span class="whitespace-nowrap"> · {{ describeRelativeDay(item.delivery_date, today) }}</span>
         </p>
         <p
@@ -92,6 +105,20 @@ const menuItems = computed(() => {
             v-if="context === 'agenda'"
             class="whitespace-nowrap"
           > · {{ describeRelativeDay(item.prepare_date, today) }}</span>
+        </p>
+        <p
+          v-if="deadlineText"
+          class="flex items-center gap-1 text-sm"
+          :class="deadline.passed ? 'font-medium text-amber-800 dark:text-amber-300' : 'text-muted'"
+          data-order-deadline
+        >
+          <UIcon
+            name="i-lucide-clock"
+            class="size-3.5 shrink-0"
+            :class="deadline.passed ? '' : 'text-dimmed'"
+            aria-hidden="true"
+          />
+          {{ deadlineText }}
         </p>
         <p
           v-if="moved"
@@ -179,6 +206,7 @@ const menuItems = computed(() => {
         :disabled="pending"
         @click="emit('edit', item)"
       />
+      <!-- Móvil: todas las acciones secundarias en el menú. -->
       <UDropdownMenu
         :items="menuItems"
         :content="{ align: 'end' }"
@@ -189,7 +217,24 @@ const menuItems = computed(() => {
           color="neutral"
           variant="outline"
           size="lg"
-          class="min-h-11 min-w-11 justify-center lg:min-h-0 lg:min-w-0"
+          class="min-h-11 min-w-11 justify-center sm:hidden"
+          :aria-label="`Más acciones: ${itemLabel}`"
+          :disabled="pending"
+        />
+      </UDropdownMenu>
+      <!-- Pantallas anchas: solo lo que no está a la vista. -->
+      <UDropdownMenu
+        v-if="wideMenuItems.length"
+        :items="wideMenuItems"
+        :content="{ align: 'end' }"
+        :disabled="pending"
+      >
+        <UButton
+          icon="i-lucide-ellipsis-vertical"
+          color="neutral"
+          variant="outline"
+          size="lg"
+          class="hidden min-h-11 min-w-11 justify-center sm:inline-flex lg:min-h-0 lg:min-w-0"
           :aria-label="`Más acciones: ${itemLabel}`"
           :disabled="pending"
         />

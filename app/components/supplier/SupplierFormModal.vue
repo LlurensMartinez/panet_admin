@@ -44,6 +44,26 @@ const weekdaysInvalid = computed(() =>
   Boolean(form.value?.getErrors?.('delivery_weekdays')?.length),
 )
 
+// Calendario: días fijos o a demanda, antelación por día, quincenal.
+const onDemand = computed(() => state.order_mode === ORDER_MODE.ON_DEMAND)
+const selectedDays = computed(() => WEEKDAYS.filter(day => state.delivery_weekdays.includes(day.value)))
+const canCustomizeLeads = computed(() => !onDemand.value && selectedDays.value.length > 1)
+const showFrequency = computed(() => !onDemand.value && selectedDays.value.length > 0)
+const biweekly = computed(() => showFrequency.value && Number(state.delivery_every_weeks) === 2)
+
+// Al activar la antelación por día, cada día empieza con la general.
+function onCustomLeads(on) {
+  if (!on) return
+  for (const day of WEEKDAYS) state.day_leads[day.value] = state.order_lead_days
+}
+
+// Al pasar a quincenal, se propone la próxima entrega como referencia.
+function onFrequency(value) {
+  if (Number(value) !== 2 || state.delivery_anchor_date) return
+  const [next] = getNextDeliveryDates({ delivery_weekdays: state.delivery_weekdays }, getTodayDate(), 1)
+  if (next) state.delivery_anchor_date = next
+}
+
 function focusFirstField(event) {
   event.preventDefault()
   nextTick(() => firstField.value?.inputRef?.focus())
@@ -61,7 +81,7 @@ async function onSubmit() {
 
   saving.value = true
   try {
-    const result = await props.submit({ ...state, delivery_weekdays: [...state.delivery_weekdays] })
+    const result = await props.submit({ ...state, delivery_weekdays: [...state.delivery_weekdays], day_leads: { ...state.day_leads } })
     if (result.ok) {
       open.value = false
       emit('saved', result.supplier)
@@ -88,7 +108,7 @@ const notesLength = computed(() => Array.from(state.notes ?? '').length)
   <UModal
     v-model:open="open"
     :title="isEdit ? 'Editar proveedor' : 'Añadir proveedor'"
-    :description="isEdit ? supplier.name : 'Nombre, días habituales de entrega y antelación del pedido.'"
+    :description="isEdit ? supplier.name : 'Nombre, cómo se pide, días de entrega y antelación del pedido.'"
     :dismissible="!saving"
     :close="{ 'disabled': saving, 'aria-label': 'Cerrar' }"
     :content="{ onOpenAutoFocus: focusFirstField }"
@@ -136,30 +156,144 @@ const notesLength = computed(() => Array.from(state.notes ?? '').length)
           />
         </UFormField>
 
+        <UFormField name="order_mode">
+          <URadioGroup
+            v-model="state.order_mode"
+            :items="ORDER_MODE_OPTIONS"
+            variant="card"
+            orientation="horizontal"
+            :disabled="saving"
+            legend="Cómo se pide"
+            :ui="{ legend: 'mb-1.5 text-sm font-medium text-default', fieldset: 'grid grid-cols-2 gap-2', item: 'min-w-0 p-3', label: 'font-medium', description: 'text-pretty' }"
+          />
+        </UFormField>
+
         <UFormField
-          label="Días de entrega"
+          :label="onDemand ? 'Días en que puede entregar' : 'Días de entrega'"
           name="delivery_weekdays"
           hint="Opcional"
-          help="Días habituales en que llega el pedido. Sin días, el proveedor no aparece en la agenda."
+          :help="onDemand
+            ? 'Se usan para proponer la entrega más próxima al crear un pedido.'
+            : 'Días habituales en que llega el pedido. Sin días, el proveedor no aparece en la agenda.'"
         >
           <SupplierWeekdayPicker
             v-model="state.delivery_weekdays"
+            :legend="onDemand ? 'Días en que puede entregar' : 'Días de entrega'"
             :disabled="saving"
             :invalid="weekdaysInvalid"
           />
         </UFormField>
 
         <UFormField
-          label="Antelación del pedido"
+          v-show="!(canCustomizeLeads && state.custom_leads)"
+          :label="onDemand ? 'Tiempo de entrega' : 'Antelación del pedido'"
           name="order_lead_days"
           required
-          help="Cuántos días antes de la entrega se prepara. Cada pedido podrá tener su propia fecha si hace falta."
+          :help="onDemand
+            ? 'Cuántos días tarda en llegar desde que se pide (por ejemplo, 2 días = 48 h).'
+            : 'Cuántos días antes de la entrega se prepara. Cada pedido podrá tener su propia fecha si hace falta.'"
         >
           <USelect
             v-model="state.order_lead_days"
-            :items="ORDER_LEAD_OPTIONS"
+            :items="onDemand ? DELIVERY_TIME_OPTIONS : ORDER_LEAD_OPTIONS"
+            :disabled="saving"
             size="lg"
             class="w-full sm:w-56"
+          />
+        </UFormField>
+
+        <!-- Antelación distinta según el día de entrega -->
+        <div
+          v-if="canCustomizeLeads"
+          class="space-y-3"
+        >
+          <USwitch
+            v-model="state.custom_leads"
+            label="Antelación distinta según el día"
+            description="Por ejemplo, el pedido del lunes se hace el viernes y el del jueves, el miércoles."
+            :disabled="saving"
+            @update:model-value="onCustomLeads"
+          />
+          <UFormField
+            v-if="state.custom_leads"
+            name="day_leads"
+            :ui="{ container: 'mt-0' }"
+          >
+            <fieldset class="divide-y divide-default rounded-lg ring ring-default">
+              <legend class="sr-only">
+                Antelación de cada día de entrega
+              </legend>
+              <div
+                v-for="day in selectedDays"
+                :key="day.value"
+                class="flex items-center justify-between gap-3 px-3 py-2"
+              >
+                <label
+                  :for="`${formId}-lead-${day.value}`"
+                  class="text-sm font-medium text-highlighted first-letter:uppercase"
+                >
+                  {{ day.label }}
+                </label>
+                <USelect
+                  :id="`${formId}-lead-${day.value}`"
+                  v-model="state.day_leads[day.value]"
+                  :items="ORDER_LEAD_OPTIONS"
+                  :disabled="saving"
+                  size="lg"
+                  class="w-40 sm:w-48"
+                />
+              </div>
+            </fieldset>
+          </UFormField>
+        </div>
+
+        <!-- Frecuencia: cada semana o cada 2 semanas -->
+        <div
+          v-if="showFrequency"
+          class="grid gap-4 sm:grid-cols-2"
+        >
+          <UFormField
+            label="Frecuencia"
+            name="delivery_every_weeks"
+          >
+            <USelect
+              v-model="state.delivery_every_weeks"
+              :items="DELIVERY_FREQUENCY_OPTIONS"
+              :disabled="saving"
+              size="lg"
+              class="w-full"
+              @update:model-value="onFrequency"
+            />
+          </UFormField>
+          <UFormField
+            v-if="biweekly"
+            label="Una fecha de entrega"
+            name="delivery_anchor_date"
+            required
+            help="Cualquier entrega de una semana en que toque: marca qué semanas alternas."
+          >
+            <UInput
+              v-model="state.delivery_anchor_date"
+              type="date"
+              :disabled="saving"
+              size="lg"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+
+        <UFormField
+          label="Hora límite del pedido"
+          name="order_deadline"
+          hint="Opcional"
+          help="Hora máxima para hacer el pedido el día que se prepara (se avisa en la agenda y en Inicio)."
+        >
+          <UInput
+            v-model="state.order_deadline"
+            type="time"
+            :disabled="saving"
+            size="lg"
+            class="w-full sm:w-40"
           />
         </UFormField>
 
@@ -176,6 +310,9 @@ const notesLength = computed(() => Array.from(state.notes ?? '').length)
           <p class="text-pretty">
             <span class="font-medium text-highlighted">{{ schedule.delivery }}.</span>
             {{ ' ' }}<span class="text-muted">{{ schedule.preparation }}</span>
+            <template v-if="schedule.deadline">
+              {{ ' ' }}<span class="text-muted">{{ schedule.deadline }}.</span>
+            </template>
           </p>
         </div>
 

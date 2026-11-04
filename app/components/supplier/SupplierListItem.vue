@@ -12,10 +12,15 @@ const props = defineProps({
 const emit = defineEmits(['edit', 'toggle-active'])
 
 const toggleLabel = computed(() => props.supplier.is_active ? 'Desactivar' : 'Activar')
-const hasDeliveries = computed(() => normalizeWeekdays(props.supplier.delivery_weekdays).length > 0)
-const leadText = computed(() => hasDeliveries.value
-  ? `Prepara: ${describeLeadDays(props.supplier.order_lead_days).toLowerCase()}`
-  : 'Sin entregas habituales')
+const preparationText = computed(() => describeSupplierPreparationShort(props.supplier))
+const leadText = computed(() => {
+  if (!preparationText.value) return 'Sin entregas habituales'
+  return isOnDemand(props.supplier) ? preparationText.value : `Prepara: ${preparationText.value.charAt(0).toLowerCase()}${preparationText.value.slice(1)}`
+})
+const deadlineText = computed(() => {
+  const time = formatDeadline(props.supplier.order_deadline)
+  return time ? `Antes de las ${Number(time.slice(0, 2))}:${time.slice(3)}` : ''
+})
 
 const productsPath = computed(() => `/pedidos/proveedores/${props.supplier.id}`)
 
@@ -72,6 +77,17 @@ const menuItems = computed(() => [[
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 md:hidden">
         <SupplierWeekdayChips :days="supplier.delivery_weekdays" />
         <span class="text-sm text-muted">{{ leadText }}</span>
+        <span
+          v-if="deadlineText"
+          class="inline-flex items-center gap-1 text-sm text-muted"
+        >
+          <UIcon
+            name="i-lucide-clock"
+            class="size-3.5 text-dimmed"
+            aria-hidden="true"
+          />
+          {{ deadlineText }}
+        </span>
       </div>
     </div>
 
@@ -81,16 +97,32 @@ const menuItems = computed(() => [[
     </div>
 
     <!-- Preparación (escritorio) -->
-    <p class="hidden truncate text-sm md:block">
-      <span
-        v-if="hasDeliveries"
-        class="text-default"
-      >{{ describeLeadDays(supplier.order_lead_days) }}</span>
-      <span
+    <div class="hidden min-w-0 text-sm md:block">
+      <p
+        v-if="preparationText"
+        class="truncate text-default"
+        :title="preparationText"
+      >
+        {{ preparationText }}
+      </p>
+      <p
         v-else
         class="text-dimmed"
-      >—</span>
-    </p>
+      >
+        —
+      </p>
+      <p
+        v-if="deadlineText"
+        class="flex items-center gap-1 truncate text-xs text-muted"
+      >
+        <UIcon
+          name="i-lucide-clock"
+          class="size-3 shrink-0 text-dimmed"
+          aria-hidden="true"
+        />
+        {{ deadlineText }}
+      </p>
+    </div>
 
     <!-- Estado + menú (móvil) -->
     <div class="flex items-center justify-end gap-1.5 self-start md:justify-start md:self-center">

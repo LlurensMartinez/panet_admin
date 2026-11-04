@@ -29,6 +29,10 @@ Guía de configuración de Supabase: acceso privado y autorización (Fase 1, sec
 - **Fase 3, Bloque 4, preparada y pendiente de aplicar en el proyecto remoto** (sección 11):
   - Migración `supabase/migrations/20261029214500_supplier_products.sql`: crea `public.supplier_products` con su RLS.
   - Script de comprobación `supabase/tests/supplier_products_rls_checks.sql`.
+- **Fase 3, Bloque 6, preparada y pendiente de aplicar en el proyecto remoto** (sección 12):
+  - Migración `supabase/migrations/20261104130000_supplier_schedule_rules.sql`: añade a `public.suppliers` el calendario (antelación por día, quincenales, a demanda y hora límite).
+  - Script de comprobación `supabase/tests/supplier_schedule_checks.sql`.
+  - Script de carga `supabase/seeds/proveedores_hoja_2026-06-12.sql` (**borra** pedidos, productos y proveedores, y carga los de la hoja).
 
 Sin `NUXT_PUBLIC_SUPABASE_URL` y `NUXT_PUBLIC_SUPABASE_KEY`, la aplicación compila, pero todas las páginas muestran el error 500 *«Falta configurar la conexión con Supabase»*. Es intencionado: no hay acceso de prueba ni autenticación simulada.
 
@@ -873,6 +877,66 @@ Sin sesión (solo la clave publicable) → esperado: HTTP 401, código 42501:
 curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/supplier_products?select=*" -H "apikey: $KEY"
 ```
 
+## 12. Fase 3, Bloque 6: calendario de proveedores y carga de la hoja
+
+Dos pasos, **en este orden**: primero la migración (12.1 a 12.4) y después, si quieres sustituir los proveedores por los de la hoja, el script de carga (12.5).
+
+### 12.1 Qué hace la migración
+
+Archivo: `supabase/migrations/20261104130000_supplier_schedule_rules.sql`. **Solo añade columnas** a `public.suppliers`, con valores por defecto que mantienen el comportamiento actual de todos los proveedores. No borra ni cambia datos y no toca ninguna otra tabla. Las políticas RLS y los permisos de `suppliers` no cambian.
+
+- `lead_days_overrides`: antelación distinta según el día de entrega (por ejemplo, `{"1": 3}`: el pedido del lunes, 3 días antes).
+- `delivery_every_weeks` y `delivery_anchor_date`: entregas cada semana o cada 2 semanas, con una fecha de referencia.
+- `order_mode`: `scheduled` (días fijos) u `on_demand` (a demanda).
+- `order_deadline`: hora límite del pedido.
+- Restricciones `CHECK` que validan esos datos y la función `private.is_valid_lead_days_overrides(jsonb, smallint[])`. La función es inmutable, no lee tablas y no es `SECURITY DEFINER`; la puede ejecutar `authenticated` (las restricciones se evalúan con los permisos de quien guarda), no `anon`.
+
+**Importante:** la versión nueva de la app lee estas columnas. Aplica la migración **antes** de usar la app actualizada contra el proyecto real; si no, las pantallas de pedidos y proveedores mostrarán que falta la migración. La versión anterior de la app sigue funcionando con la migración aplicada.
+
+### 12.2 Antes de empezar
+
+Selector **Role** en **`postgres`**. Comprobación previa:
+
+```sql
+select to_regclass('public.suppliers') as tabla_suppliers,
+       to_regprocedure('private.is_valid_lead_days_overrides(jsonb, smallint[])') as funcion_nueva;
+```
+
+- **`tabla_suppliers` con valor y `funcion_nueva` vacía:** se puede aplicar.
+- **`funcion_nueva` con valor:** la migración ya está aplicada. No la apliques otra vez.
+
+### 12.3 Aplicar la migración (SQL Editor)
+
+1. **SQL Editor → New query**, selector **Role** en `postgres`.
+2. Escribe `begin;` en la primera línea, pega debajo el contenido completo de `20261104130000_supplier_schedule_rules.sql` y escribe `commit;` en la última.
+3. Ejecuta una sola vez. Lo esperado es «Success. No rows returned».
+
+Si da un error, la transacción se deshace entera y no cambia nada. Si el error es que la columna o la función ya existen, la migración ya estaba aplicada.
+
+### 12.4 Comprobaciones SQL
+
+1. Abre `supabase/tests/supplier_schedule_checks.sql` y sustituye en la sección CONFIGURACIÓN el UUID de la cuenta autorizada (y, si quieres, el de la segunda cuenta), igual que en la sección 11.4. No guardes los UUID reales en Git.
+2. Pega el script entero en una consulta nueva (selector **Role** en `postgres`) y ejecútalo.
+3. **Resultado esperado:** 30 filas con `resultado` que empieza por `OK`. Si los proveedores ya existentes usan el calendario nuevo, la fila 8 sale como `INFO`, que también es correcto.
+
+El script crea proveedores de prueba y los deshace al final (la última fila lo comprueba).
+
+### 12.5 Cargar los proveedores de la hoja (borra datos)
+
+Archivo: `supabase/seeds/proveedores_hoja_2026-06-12.sql`.
+
+**Antes de ejecutarlo:**
+- **Borra todos los pedidos** (también los preparados y los «no se pide» del historial), **todos los productos habituales** y **todos los proveedores**. No se puede deshacer desde la app. Si quieres una copia, exporta antes esas tres tablas desde el *Table Editor* (*Export → CSV*).
+- No toca festivos, trabajadoras, horas extra ni `profiles`.
+- Revisa la sección CONFIGURACIÓN: la fecha de referencia de Distriluago y Empaworld (un lunes en que sí entregan). También se puede corregir después en la app.
+
+**Cómo:**
+1. **SQL Editor → New query**, selector **Role** en `postgres`.
+2. Pega el archivo entero (ya incluye `begin;` y `commit;`) y ejecútalo una vez. El editor avisará de que contiene `DELETE`: es lo esperado.
+3. El resultado es una tabla con los 16 proveedores, sus entregas, el día en que se hace cada pedido, la frecuencia y la hora límite. Compárala con la hoja.
+
+Si algo falla (por ejemplo, falta la migración de 12.3), no cambia nada. Se puede volver a ejecutar: vuelve a borrar y a cargar lo mismo.
+
 ## Limitaciones conocidas
 
 - La cookie de sesión dura 8 horas desde la última renovación (valor por defecto del módulo). Si la app no se usa durante más tiempo, habrá que volver a iniciar sesión.
@@ -884,5 +948,6 @@ curl -s -w '\nHTTP %{http_code}\n' "$URL/rest/v1/supplier_products?select=*" -H 
   - **Fase 1:** la migración y `authorization_checks.sql` se han ejecutado también en el proyecto remoto (31 filas correctas). Falta confirmar la sección 7.2.
   - **Fase 2:** la migración está aplicada en el proyecto remoto según confirmación de la usuaria. Falta confirmar que `staff_rls_checks.sql` se ha ejecutado allí con 66 `OK` + 1 `INFO`: hasta entonces, su seguridad no se puede dar por validada en el proyecto real (sección 9.4).
   - **Fase 3:** la migración y `orders_rls_checks.sql` se han probado solo en local (117 filas: 116 `OK` + 1 `INFO`), también con la columna `name` en configuración regional `C`, también a través de PostgREST 13 con tokens de prueba. Se ha comprobado además que el script detecta con `FALLO` nueve versiones de la migración con errores introducidos a propósito (privilegios de `anon`, borrado de pedidos sin condición de estado, `UPDATE` de todas las columnas, falta del trigger de `prepared_at`, de un único, de RLS, del índice de nombre o del rango de días, y una política abierta) y el índice de nombre anterior, que distinguía acentos. Después se aplicaron en el proyecto remoto (secciones 10.2 y 10.4) con resultado correcto, según confirmación de la usuaria.
+  - **Fase 3, Bloque 6:** la migración del calendario, `supplier_schedule_checks.sql` (30 filas `OK`) y el script de carga de la hoja se han probado solo en local (PostgreSQL 16 y PostgREST 13). Con la migración aplicada, `orders_rls_checks.sql` y `supplier_products_rls_checks.sql` siguen dando el resultado esperado. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 4:** la migración de productos y `supplier_products_rls_checks.sql` se han probado solo en local (57 filas: 56 `OK` + 1 `INFO`). El script detecta con `FALLO` ocho versiones de la migración con errores introducidos a propósito (privilegios de `anon`, `DELETE` concedido, `UPDATE` de todas las columnas, índice no único o sin proveedor, cantidad sin rango, política abierta y RLS desactivado). **No** se han ejecutado en el proyecto remoto: su seguridad solo se puede dar por validada después de las secciones 11.2 y 11.4.
 - **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.

@@ -50,6 +50,7 @@ app/
 supabase/
   migrations/                # migraciones SQL versionadas (se aplican a mano: ver SUPABASE_SETUP.md)
   tests/                     # comprobaciones SQL de autorización y RLS
+  seeds/                     # scripts de carga de datos (se ejecutan a mano; ver SUPABASE_SETUP.md)
 tests/unit/                  # pruebas unitarias (npm test)
 nuxt.config.js
 eslint.config.mjs

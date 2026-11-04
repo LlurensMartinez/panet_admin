@@ -75,12 +75,14 @@ const productsUnavailable = computed(() => Boolean(productsError.value) && produ
 const holidaysUnavailable = computed(() => Boolean(holidaysError.value) && holidaysStatus.value !== 'pending')
 const retrying = computed(() => [ordersStatus, suppliersStatus].some(s => s.value === 'pending'))
 
+const clock = useMinuteClock()
 const summary = computed(() => buildHomeSummary({
   suppliers: suppliers.value,
   orders: orders.value,
   holidays: holidays.value,
   products: products.value,
   today: today.value,
+  now: clock.value,
 }))
 
 const title = computed(() => formatHomeTitle(today.value))
@@ -90,7 +92,7 @@ const summaryText = computed(() => {
   return describeHomeSummary(summary.value)
 })
 
-const hasSchedules = computed(() => suppliers.value.some(s => s.is_active && normalizeWeekdays(s.delivery_weekdays).length > 0))
+const hasSchedules = computed(() => suppliers.value.some(hasScheduledDeliveries))
 const nothingPlanned = computed(() => !loading.value && !summaryError.value
   && !hasSchedules.value
   && summary.value.today.orderCount === 0 && summary.value.tomorrow.orderCount === 0

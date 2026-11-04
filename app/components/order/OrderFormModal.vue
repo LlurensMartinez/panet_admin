@@ -35,18 +35,23 @@ const supplier = computed(() => {
   const id = isNew.value ? state.supplier_id : props.item?.supplier_id
   return props.suppliers.find(s => s.id === id) ?? props.item?.supplier ?? null
 })
-const leadDays = computed(() => supplier.value?.order_lead_days ?? null)
+const supplierOnDemand = computed(() => isOnDemand(supplier.value))
+// Antelación del día de la semana de la entrega (cada día puede tener la suya).
+const leadDays = computed(() => supplier.value ? getLeadDaysForDate(supplier.value, state.delivery_date) : null)
+// A demanda no hay preparación «habitual»: se pide cuando hace falta.
 const defaultPrepare = computed(() =>
-  leadDays.value === null ? '' : getDefaultPrepareDate(state.delivery_date, leadDays.value))
+  leadDays.value === null || supplierOnDemand.value ? '' : getDefaultPrepareDate(state.delivery_date, leadDays.value))
 const holidayWarning = computed(() =>
   isValidDate(state.delivery_date) ? getHolidayWarning(state.delivery_date, props.holidays) : null)
 
 const supplierItems = computed(() => getSelectableSuppliers(props.suppliers).map(s => ({
   value: s.id,
   label: s.name,
-  description: normalizeWeekdays(s.delivery_weekdays).length
-    ? `${formatWeekdayList(s.delivery_weekdays)} · ${describeLeadDays(s.order_lead_days).toLowerCase()}`
-    : 'Sin días de entrega habituales',
+  description: isOnDemand(s)
+    ? [describeSupplierPreparationShort(s), formatWeekdayList(s.delivery_weekdays)].filter(Boolean).join(' · ')
+    : normalizeWeekdays(s.delivery_weekdays).length
+      ? `${formatWeekdayList(s.delivery_weekdays)} · ${describeSupplierPreparationShort(s).toLowerCase()}`
+      : 'Sin días de entrega habituales',
 })))
 
 watch(open, (isOpen) => {
@@ -59,6 +64,15 @@ watch(open, (isOpen) => {
 
 watch([() => state.delivery_date, () => state.supplier_id], () => {
   if (isNew.value && !prepareTouched.value && defaultPrepare.value) state.prepare_date = defaultPrepare.value
+})
+
+// Proveedor a demanda en un pedido nuevo: se propone pedirlo hoy y la entrega
+// posible más próxima (sin tocar fechas ya escritas).
+watch(() => state.supplier_id, () => {
+  if (!isNew.value || !supplierOnDemand.value || state.delivery_date) return
+  const dates = getOnDemandOrderDates(supplier.value, props.today)
+  state.delivery_date = dates.delivery_date
+  if (!prepareTouched.value) state.prepare_date = dates.prepare_date
 })
 
 function onPrepareInput() {
@@ -83,7 +97,7 @@ function validate(values) {
 
 const title = computed(() => isNew.value ? 'Nuevo pedido' : 'Editar pedido')
 const description = computed(() => {
-  if (isNew.value) return 'Para un pedido fuera de los días habituales de entrega.'
+  if (isNew.value) return 'Para un pedido fuera de los días habituales o de un proveedor a demanda.'
   return `${getOrderSupplierName(props.item)}${props.item?.isForecast ? ' · previsión del calendario' : ''}`
 })
 
@@ -211,7 +225,13 @@ const notesLength = computed(() => Array.from(state.notes ?? '').length)
         </div>
 
         <p
-          v-if="leadDays !== null && defaultPrepare"
+          v-if="supplierOnDemand && leadDays !== null"
+          class="-mt-2 text-sm text-muted"
+        >
+          A demanda: llega {{ leadDays === 0 ? 'el mismo día' : leadDays === 1 ? '1 día después' : `${leadDays} días después` }} de pedirlo{{ normalizeWeekdays(supplier?.delivery_weekdays).length ? `, ${formatWeekdayList(supplier.delivery_weekdays)}` : '' }}.
+        </p>
+        <p
+          v-else-if="leadDays !== null && defaultPrepare"
           class="-mt-2 flex flex-wrap items-center gap-x-2 text-sm text-muted"
         >
           <span>Antelación habitual: {{ describeLeadDays(leadDays).toLowerCase() }} ({{ formatShortDate(defaultPrepare, today) }}).</span>

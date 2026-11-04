@@ -51,8 +51,13 @@ Quedan pendientes para la Fase 6 el resumen de horas extra del periodo actual y 
 
 Cada proveedor tendrá:
 - Nombre (obligatorio). No puede haber dos proveedores con el mismo nombre, sin distinguir mayúsculas, acentos ni espacios repetidos.
+- Cómo se pide:
+  - **Días fijos** (por defecto): la agenda propone el pedido de cada entrega.
+  - **A demanda**: se pide cuando hace falta (por ejemplo, el hielo, que se puede pedir cualquier día y llega en 48 h). No genera previsiones; los días de entrega son los días en que puede entregar y la antelación es el tiempo que tarda en llegar. Al crear un pedido a mano se propone pedirlo hoy y la entrega posible más próxima.
 - Días habituales de entrega (de lunes a domingo; puede no tener ninguno).
-- Antelación: cuántos días antes de la entrega se prepara el pedido, de 0 (el mismo día) a 7. Por defecto, 1.
+- Antelación: cuántos días antes de la entrega se prepara el pedido, de 0 (el mismo día) a 7. Por defecto, 1. Puede ser **distinta según el día de entrega** (por ejemplo, el pedido del lunes se hace el viernes, 3 días antes, y el del jueves el miércoles, 1 día antes).
+- Frecuencia: **cada semana** o **cada 2 semanas** (quincenal). Las quincenales tienen una fecha de entrega de referencia que marca qué semanas tocan (las semanas alternas, de lunes a domingo).
+- Hora límite del pedido (opcional): hora máxima para hacerlo el día que se prepara (por ejemplo, antes de las 12:00). La agenda y la página de inicio la muestran en los pedidos pendientes y avisan cuando ya ha pasado.
 - Notas opcionales.
 - Estado activo/inactivo.
 
@@ -60,7 +65,11 @@ No se requieren NIF, datos fiscales ni dirección.
 
 Los proveedores no se eliminan: se desactivan. Un proveedor inactivo no genera previsiones ni admite pedidos nuevos, pero conserva su historial.
 
-La antelación es única por proveedor. Si en el futuro hiciera falta una antelación distinta según el día de entrega (por ejemplo, pedir el viernes para el lunes y el martes para el jueves), se podrá incorporar en una fase posterior. Mientras tanto, la fecha de preparación de cada pedido se puede corregir individualmente.
+La fecha de preparación de cada pedido se puede seguir corrigiendo individualmente sin cambiar la configuración del proveedor.
+
+La agenda no prevé pedidos anteriores al día en que se dio de alta el proveedor: un proveedor recién creado no aparece con pedidos atrasados de días en que aún no existía.
+
+Los proveedores de la hoja «Proveïdors Panet L'Ametlla» (12/06/2026) se cargan con el script `supabase/seeds/proveedores_hoja_2026-06-12.sql` (ver `SUPABASE_SETUP.md`, sección 12).
 
 ### 3.3 Productos habituales por proveedor
 

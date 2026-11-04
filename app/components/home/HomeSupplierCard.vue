@@ -20,9 +20,14 @@ function deliveryText(delivery) {
   return ['hoy', 'mañana'].includes(relative) ? `Entrega ${relative}, ${date}` : `Entrega ${date}`
 }
 
+function shortTime(time) {
+  return `${Number(time.slice(0, 2))}:${time.slice(3)}`
+}
+
 function tagsOf(delivery) {
   const tags = []
-  if (delivery.manual) tags.push('Pedido manual')
+  if (delivery.onDemand) tags.push('A demanda')
+  else if (delivery.manual) tags.push('Pedido manual')
   if (delivery.moved) tags.push('Fecha cambiada')
   return tags
 }
@@ -95,6 +100,20 @@ function tagsOf(delivery) {
             :key="tag"
             class="rounded-sm bg-elevated px-1.5 py-px text-xs font-medium text-toned"
           >{{ tag }}</span>
+        </p>
+        <p
+          v-if="delivery.deadline && !delivery.overdue"
+          class="flex items-center gap-1.5 text-sm"
+          :class="delivery.deadline.passed ? 'font-medium text-amber-800 dark:text-amber-300' : 'text-muted'"
+          data-home-deadline
+        >
+          <UIcon
+            name="i-lucide-clock"
+            class="size-3.5 shrink-0"
+            :class="delivery.deadline.passed ? '' : 'text-dimmed'"
+            aria-hidden="true"
+          />
+          {{ delivery.deadline.passed ? `Hora límite pasada (${shortTime(delivery.deadline.time)})` : describeDeadline(delivery.deadline.time) }}
         </p>
         <p
           v-if="delivery.overdue"

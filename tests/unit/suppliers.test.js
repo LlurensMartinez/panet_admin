@@ -72,8 +72,10 @@ describe('días de la semana', () => {
   it('resume el calendario de entregas y preparación', () => {
     expect(describeSupplierSchedule({ delivery_weekdays: [1, 4], order_lead_days: 1 })).toEqual({
       hasDeliveries: true,
+      onDemand: false,
       delivery: 'Entrega: lunes y jueves',
       preparation: 'Se prepara el domingo y miércoles (1 día antes).',
+      deadline: '',
     })
     expect(describeSupplierSchedule({ delivery_weekdays: [2], order_lead_days: 0 }).preparation)
       .toBe('Se prepara el mismo día de la entrega.')
@@ -118,7 +120,17 @@ describe('formulario', () => {
       delivery_weekdays: [4, 1, 4],
       order_lead_days: '2',
       notes: '   ',
-    })).toEqual({ name: 'Harinas Sol', delivery_weekdays: [1, 4], order_lead_days: 2, notes: null })
+    })).toEqual({
+      name: 'Harinas Sol',
+      delivery_weekdays: [1, 4],
+      order_lead_days: 2,
+      lead_days_overrides: {},
+      delivery_every_weeks: 1,
+      delivery_anchor_date: null,
+      order_mode: 'scheduled',
+      order_deadline: null,
+      notes: null,
+    })
   })
 
   it('guarda el nombre en forma Unicode NFC', () => {
@@ -126,9 +138,21 @@ describe('formulario', () => {
   })
 
   it('propone una antelación de 1 día y ningún día de entrega para un proveedor nuevo', () => {
-    expect(toSupplierFormValues()).toEqual({ name: '', delivery_weekdays: [], order_lead_days: DEFAULT_ORDER_LEAD_DAYS, notes: '' })
-    expect(toSupplierFormValues(supplier({ notes: 'Llamar antes' }))).toEqual({
-      name: 'Harinas Sol', delivery_weekdays: [1, 4], order_lead_days: 1, notes: 'Llamar antes',
+    const allDays = lead => ({ 1: lead, 2: lead, 3: lead, 4: lead, 5: lead, 6: lead, 7: lead })
+    expect(toSupplierFormValues()).toEqual({
+      name: '',
+      order_mode: 'scheduled',
+      delivery_weekdays: [],
+      order_lead_days: DEFAULT_ORDER_LEAD_DAYS,
+      custom_leads: false,
+      day_leads: allDays(DEFAULT_ORDER_LEAD_DAYS),
+      delivery_every_weeks: 1,
+      delivery_anchor_date: '',
+      order_deadline: '',
+      notes: '',
+    })
+    expect(toSupplierFormValues(supplier({ notes: 'Llamar antes' }))).toMatchObject({
+      name: 'Harinas Sol', delivery_weekdays: [1, 4], order_lead_days: 1, custom_leads: false, notes: 'Llamar antes',
     })
   })
 

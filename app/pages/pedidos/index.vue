@@ -86,7 +86,7 @@ const agenda = computed(() => buildAgenda({
   holidays: holidays.value,
   today: today.value,
 }))
-const hasSchedules = computed(() => suppliers.value.some(s => s.is_active && normalizeWeekdays(s.delivery_weekdays).length > 0))
+const hasSchedules = computed(() => suppliers.value.some(hasScheduledDeliveries))
 const holidaysUnavailable = computed(() => Boolean(holidaysError.value) && holidaysStatus.value !== 'pending')
 
 function retry() {
@@ -405,7 +405,7 @@ const actions = {
             color="neutral"
             variant="subtle"
             icon="i-lucide-truck"
-            title="Ningún proveedor activo tiene días de entrega"
+            title="Ningún proveedor activo tiene días fijos de entrega"
             description="La agenda prevé los pedidos a partir de los días de entrega de cada proveedor. Mientras tanto, puedes crear pedidos a mano."
             :actions="[{ label: 'Ir a Proveedores', color: 'neutral', variant: 'outline', to: '/pedidos/proveedores' }]"
           />

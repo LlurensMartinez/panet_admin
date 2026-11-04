@@ -14,8 +14,9 @@
 //   productos habituales ACTIVOS (cantidades orientativas, nunca inventadas).
 
 import { addDaysToDate } from './overtime.js'
-import { buildAgenda, ORDER_STATUS } from './orders.js'
+import { buildAgenda, getOrderDeadline, ORDER_STATUS } from './orders.js'
 import { sortProducts } from './products.js'
+import { isOnDemand } from './suppliers.js'
 
 const collator = new Intl.Collator('es', { sensitivity: 'base', numeric: true })
 const hourFormatter = new Intl.DateTimeFormat('es-ES', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Madrid' })
@@ -31,7 +32,7 @@ export function groupActiveProducts(products) {
   return bySupplier
 }
 
-function toDelivery(item, today) {
+function toDelivery(item, today, now) {
   return {
     key: item.key,
     deliveryDate: item.delivery_date,
@@ -39,9 +40,12 @@ function toDelivery(item, today) {
     overdue: item.prepare_date < today,
     isForecast: Boolean(item.isForecast),
     manual: !item.isForecast && !item.scheduled_delivery_date,
+    onDemand: isOnDemand(item.supplier),
     moved: Boolean(item.scheduled_delivery_date && item.scheduled_delivery_date !== item.delivery_date),
     holidayWarning: item.holidayWarning ?? null,
     notes: item.notes ?? null,
+    // Hora límite del pedido: { time, passed } o null.
+    deadline: getOrderDeadline(item, today, now),
   }
 }
 
@@ -50,7 +54,7 @@ function toDelivery(item, today) {
  * por proveedor con sus entregas (normalmente una) y sus productos activos.
  * Primero los proveedores con algo atrasado; después, por nombre.
  */
-export function groupBySupplier(items, productsBySupplier, today) {
+export function groupBySupplier(items, productsBySupplier, today, now = new Date()) {
   const cards = new Map()
   for (const item of items) {
     const id = item.supplier_id
@@ -64,7 +68,7 @@ export function groupBySupplier(items, productsBySupplier, today) {
         products: productsBySupplier?.get(id) ?? [],
       })
     }
-    cards.get(id).deliveries.push(toDelivery(item, today))
+    cards.get(id).deliveries.push(toDelivery(item, today, now))
   }
   return [...cards.values()]
     .map(card => ({
@@ -79,9 +83,9 @@ function isPending(item) {
   return item.status === ORDER_STATUS.PENDING
 }
 
-function buildSection(date, items, extraItems, productsBySupplier, today) {
+function buildSection(date, items, extraItems, productsBySupplier, today, now) {
   const pending = [...extraItems, ...items.filter(isPending)]
-  const cards = groupBySupplier(pending, productsBySupplier, today)
+  const cards = groupBySupplier(pending, productsBySupplier, today, now)
   return {
     date,
     cards,
@@ -98,15 +102,15 @@ function buildSection(date, items, extraItems, productsBySupplier, today) {
  * @returns {{ today: object, tomorrow: object }} cada sección con
  *   { date, cards, orderCount, supplierCount, overdueCount, doneCount }
  */
-export function buildHomeSummary({ suppliers = [], orders = [], holidays = [], products = [], today }) {
+export function buildHomeSummary({ suppliers = [], orders = [], holidays = [], products = [], today, now = new Date() }) {
   const agenda = buildAgenda({ suppliers, orders, holidays, today })
   const tomorrow = addDaysToDate(today, 1)
   const productsBySupplier = groupActiveProducts(products)
   const itemsOf = date => agenda.days.find(day => day.date === date)?.items ?? []
 
   return {
-    today: buildSection(today, itemsOf(today), agenda.overdue, productsBySupplier, today),
-    tomorrow: buildSection(tomorrow, itemsOf(tomorrow), [], productsBySupplier, today),
+    today: buildSection(today, itemsOf(today), agenda.overdue, productsBySupplier, today, now),
+    tomorrow: buildSection(tomorrow, itemsOf(tomorrow), [], productsBySupplier, today, now),
   }
 }
 

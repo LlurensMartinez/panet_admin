@@ -16,9 +16,9 @@
 // desfases por zona horaria ni por el cambio de hora.
 
 import { DB_ERROR_KIND, classifyDatabaseError } from './database-errors.js'
-import { addDaysToDate, isValidDate } from './overtime.js'
+import { addDaysToDate, getTodayDate, isValidDate } from './overtime.js'
 import { findHolidayByDate, getScopeLabel, HOLIDAY_MAX_YEAR, HOLIDAY_MIN_YEAR } from './holidays.js'
-import { getSupplierNameKey, normalizeWeekdays } from './suppliers.js'
+import { formatDeadline, getLeadDaysFor, getSupplierNameKey, isDeliveryWeek, isOnDemand, normalizeWeekdays } from './suppliers.js'
 
 // Columnas reales de public.orders (migración 20261028221500) y el proveedor.
 export const ORDER_COLUMNS = 'id, supplier_id, scheduled_delivery_date, delivery_date, prepare_date, status, prepared_at, notes, created_at, updated_at, supplier:suppliers(id, name, is_active, order_lead_days)'
@@ -108,14 +108,26 @@ export function buildForecasts(suppliers, { from, to }) {
   const forecasts = []
   for (const supplier of suppliers ?? []) {
     if (!supplier?.is_active) continue
+    // A demanda: no hay calendario fijo, los pedidos se crean a mano.
+    if (isOnDemand(supplier)) continue
     const days = normalizeWeekdays(supplier.delivery_weekdays)
     if (days.length === 0) continue
-    const lead = Number(supplier.order_lead_days ?? 0)
+    // No hay previsiones anteriores al alta del proveedor: uno recién creado
+    // no aparece con pedidos «atrasados» de días en que aún no existía.
+    const since = getSupplierStartDate(supplier)
 
-    // Entregas cuya preparación (entrega − antelación) cae en el rango.
-    const last = addDaysToDate(to, lead)
-    for (let delivery = addDaysToDate(from, lead); delivery <= last; delivery = addDaysToDate(delivery, 1)) {
-      if (!days.includes(getIsoWeekday(delivery))) continue
+    // Entregas cuya preparación (entrega − antelación de ese día) cae en el
+    // rango. Cada día de la semana puede tener su propia antelación y las
+    // quincenales solo entregan en semanas alternas.
+    const last = addDaysToDate(to, MAX_LEAD_DAYS)
+    for (let delivery = from; delivery <= last; delivery = addDaysToDate(delivery, 1)) {
+      const weekday = getIsoWeekday(delivery)
+      if (!days.includes(weekday)) continue
+      const lead = getLeadDaysFor(supplier, weekday)
+      const prepare = addDaysToDate(delivery, -lead)
+      if (prepare < from || prepare > to) continue
+      if (since && prepare < since) continue
+      if (!isDeliveryWeek(supplier, delivery)) continue
       forecasts.push({
         key: forecastKey(supplier.id, delivery),
         isForecast: true,
@@ -124,7 +136,7 @@ export function buildForecasts(suppliers, { from, to }) {
         supplier,
         scheduled_delivery_date: delivery,
         delivery_date: delivery,
-        prepare_date: addDaysToDate(delivery, -lead),
+        prepare_date: prepare,
         status: ORDER_STATUS.PENDING,
         prepared_at: null,
         notes: null,
@@ -132,6 +144,12 @@ export function buildForecasts(suppliers, { from, to }) {
     }
   }
   return forecasts
+}
+
+/** Día (en la tienda) en que se dio de alta el proveedor, o null si no se sabe. */
+export function getSupplierStartDate(supplier) {
+  const created = supplier?.created_at ? new Date(supplier.created_at) : null
+  return created && !Number.isNaN(created.getTime()) ? getTodayDate(created) : null
 }
 
 /** true si un pedido guardado ya ocupa esa previsión. */
@@ -149,8 +167,34 @@ export function toAgendaItem(order, suppliersById = new Map()) {
     ...order,
     key: `order:${order.id}`,
     isForecast: false,
-    supplier: order.supplier ?? suppliersById.get(order.supplier_id) ?? null,
+    // El proveedor completo (con su hora límite) si está cargado.
+    supplier: suppliersById.get(order.supplier_id) ?? order.supplier ?? null,
   }
+}
+
+/** Antelación del proveedor para una fecha de entrega (según su día de la semana). */
+export function getLeadDaysForDate(supplier, deliveryDate) {
+  return getLeadDaysFor(supplier, isValidDate(deliveryDate) ? getIsoWeekday(deliveryDate) : 0)
+}
+
+const clockFormatter = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Madrid' })
+
+/** Hora actual en la tienda, 'HH:MM'. */
+export function getShopTime(now = new Date()) {
+  return clockFormatter.format(now)
+}
+
+/**
+ * Hora límite del pedido (si el proveedor la tiene) para un pedido pendiente:
+ * { time: '12:00', passed } — `passed` si ya ha pasado la hora el día de
+ * preparación (o el día de preparación ya pasó). null si no aplica.
+ */
+export function getOrderDeadline(item, today, now = new Date()) {
+  if (!item || item.status !== ORDER_STATUS.PENDING) return null
+  const time = formatDeadline(item.supplier?.order_deadline)
+  if (!time) return null
+  const passed = item.prepare_date < today || (item.prepare_date === today && getShopTime(now) >= time)
+  return { time, passed }
 }
 
 function compareItems(a, b) {
