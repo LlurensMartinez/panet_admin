@@ -33,6 +33,9 @@ Guía de configuración de Supabase: acceso privado y autorización (Fase 1, sec
   - Migración `supabase/migrations/20261104130000_supplier_schedule_rules.sql`: añade a `public.suppliers` el calendario (antelación por día, quincenales, a demanda y hora límite).
   - Script de comprobación `supabase/tests/supplier_schedule_checks.sql`.
   - Script de carga `supabase/seeds/proveedores_hoja_2026-06-12.sql` (**borra** pedidos, productos y proveedores, y carga los de la hoja).
+- **Fase 3, Bloque 7, preparada y pendiente de aplicar en el proyecto remoto** (sección 13):
+  - Migración `supabase/migrations/20261104160000_shop_settings_official_holidays.sql`: crea `public.shop_settings` (municipio de la tienda) y añade `holidays.source`.
+  - Script de comprobación `supabase/tests/shop_settings_checks.sql`.
 
 Sin `NUXT_PUBLIC_SUPABASE_URL` y `NUXT_PUBLIC_SUPABASE_KEY`, la aplicación compila, pero todas las páginas muestran el error 500 *«Falta configurar la conexión con Supabase»*. Es intencionado: no hay acceso de prueba ni autenticación simulada.
 
@@ -937,6 +940,49 @@ Archivo: `supabase/seeds/proveedores_hoja_2026-06-12.sql`.
 
 Si algo falla (por ejemplo, falta la migración de 12.3), no cambia nada. Se puede volver a ejecutar: vuelve a borrar y a cargar lo mismo.
 
+## 13. Fase 3, Bloque 7: municipio de la tienda y festivos oficiales
+
+### 13.1 Qué hace la migración
+
+Archivo: `supabase/migrations/20261104160000_shop_settings_official_holidays.sql`. **No borra ni cambia datos.**
+
+- **Tabla `public.shop_settings`**, con una sola fila (`id = 1`): el municipio de la tienda (código INE de 5 cifras y nombre) y la fecha de la última actualización de los festivos oficiales. RLS: la cuenta autorizada puede leer, crear y modificar; nadie puede borrar; `anon` sin privilegios.
+- **Columna `holidays.source`**: `manual` (por defecto; todos los festivos que ya existen quedan así) u `official` (los que importa la app del calendario de la Generalitat). La app solo toca los `official`.
+
+Después de aplicarla, en la app: **Pedidos → Festivos → Festivos oficiales → Municipio de la tienda**. Al elegirlo, la app importa los festivos del año actual y del siguiente y, a partir de entonces, los mantiene sola (como mucho una vez al día, al abrir Festivos o la agenda).
+
+**Importante:** la versión nueva de la app lee `holidays.source`. Aplica la migración **antes** de usarla contra el proyecto real; si no, los festivos no se cargarán y la app indicará que falta esta migración.
+
+**Datos externos:** el navegador consulta `https://analisi.transparenciacatalunya.cat` (datos abiertos de la Generalitat, sin clave). Solo se envía el código del municipio y el año; ningún dato personal ni de Supabase. Si un día la red de la tienda bloquea ese dominio, la app avisa en Festivos y el resto funciona igual.
+
+### 13.2 Antes de empezar
+
+Selector **Role** en **`postgres`**. Comprobación previa:
+
+```sql
+select to_regclass('public.shop_settings') as tabla_shop_settings,
+       to_regclass('public.holidays') as tabla_holidays;
+```
+
+- **`tabla_shop_settings` vacía y `tabla_holidays` con valor:** se puede aplicar.
+- **`tabla_shop_settings` con valor:** ya está aplicada. No la apliques otra vez.
+
+### 13.3 Aplicar la migración (SQL Editor)
+
+1. **SQL Editor → New query**, selector **Role** en `postgres`.
+2. Escribe `begin;` en la primera línea, pega debajo el contenido completo de `20261104160000_shop_settings_official_holidays.sql` y escribe `commit;` en la última.
+3. Ejecuta una sola vez. Lo esperado es «Success. No rows returned».
+
+Si da un error, la transacción se deshace entera y no cambia nada.
+
+### 13.4 Comprobaciones SQL
+
+1. Abre `supabase/tests/shop_settings_checks.sql` y sustituye en CONFIGURACIÓN el UUID de la cuenta autorizada (y, si quieres, el de la segunda cuenta). No guardes los UUID reales en Git.
+2. Pégalo entero en una consulta nueva (selector **Role** en `postgres`) y ejecútalo.
+3. **Resultado esperado:** 35 filas: 33 que empiezan por `OK` y 2 `INFO` (los festivos existentes y la configuración actual de la tienda).
+
+El script deshace todo lo que prueba: la configuración y los festivos quedan como estaban (la última fila lo comprueba).
+
 ## Limitaciones conocidas
 
 - La cookie de sesión dura 8 horas desde la última renovación (valor por defecto del módulo). Si la app no se usa durante más tiempo, habrá que volver a iniciar sesión.
@@ -948,6 +994,7 @@ Si algo falla (por ejemplo, falta la migración de 12.3), no cambia nada. Se pue
   - **Fase 1:** la migración y `authorization_checks.sql` se han ejecutado también en el proyecto remoto (31 filas correctas). Falta confirmar la sección 7.2.
   - **Fase 2:** la migración está aplicada en el proyecto remoto según confirmación de la usuaria. Falta confirmar que `staff_rls_checks.sql` se ha ejecutado allí con 66 `OK` + 1 `INFO`: hasta entonces, su seguridad no se puede dar por validada en el proyecto real (sección 9.4).
   - **Fase 3:** la migración y `orders_rls_checks.sql` se han probado solo en local (117 filas: 116 `OK` + 1 `INFO`), también con la columna `name` en configuración regional `C`, también a través de PostgREST 13 con tokens de prueba. Se ha comprobado además que el script detecta con `FALLO` nueve versiones de la migración con errores introducidos a propósito (privilegios de `anon`, borrado de pedidos sin condición de estado, `UPDATE` de todas las columnas, falta del trigger de `prepared_at`, de un único, de RLS, del índice de nombre o del rango de días, y una política abierta) y el índice de nombre anterior, que distinguía acentos. Después se aplicaron en el proyecto remoto (secciones 10.2 y 10.4) con resultado correcto, según confirmación de la usuaria.
+  - **Fase 3, Bloque 7:** la migración de `shop_settings` y `shop_settings_checks.sql` (33 `OK` + 2 `INFO`) se han probado solo en local. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 6:** la migración del calendario, `supplier_schedule_checks.sql` (30 filas `OK`) y el script de carga de la hoja se han probado solo en local (PostgreSQL 16 y PostgREST 13). Con la migración aplicada, `orders_rls_checks.sql` y `supplier_products_rls_checks.sql` siguen dando el resultado esperado. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 4:** la migración de productos y `supplier_products_rls_checks.sql` se han probado solo en local (57 filas: 56 `OK` + 1 `INFO`). El script detecta con `FALLO` ocho versiones de la migración con errores introducidos a propósito (privilegios de `anon`, `DELETE` concedido, `UPDATE` de todas las columnas, índice no único o sin proveedor, cantidad sin rango, política abierta y RLS desactivado). **No** se han ejecutado en el proyecto remoto: su seguridad solo se puede dar por validada después de las secciones 11.2 y 11.4.
 - **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.

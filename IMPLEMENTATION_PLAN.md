@@ -89,6 +89,11 @@ A partir de la hoja «Proveïdors Panet L'Ametlla» (12/06/2026), que tenía cas
 - La agenda ya no prevé pedidos anteriores al alta de un proveedor (si no, al cargar la hoja aparecerían como atrasados los pedidos de la semana anterior).
 - Script de carga `supabase/seeds/proveedores_hoja_2026-06-12.sql`: borra pedidos (también el historial), productos habituales y proveedores, y crea los 16 de la hoja. **Pendiente:** revisar la fecha de referencia de los quincenales y ejecutarlo en el proyecto real.
 
+**Bloque 7 — Festivos oficiales del municipio de la tienda** *(hecho en local; migración pendiente de aplicar)*
+- Migración `supabase/migrations/20261104160000_shop_settings_official_holidays.sql`: tabla `shop_settings` (una fila, RLS) y columna `holidays.source`. No borra ni cambia datos (los festivos existentes quedan como manuales). Comprobaciones en `supabase/tests/shop_settings_checks.sql` (35 filas: 33 `OK` + 2 `INFO`) y guía en `SUPABASE_SETUP.md`, sección 13. **Pendiente:** aplicarla en el proyecto real.
+- En Festivos, selector del municipio de la tienda (los 24 municipios con tiendas Panet). La app importa del calendario oficial de la Generalitat los festivos nacionales, de Cataluña y locales del año actual y del siguiente, y los mantiene sola (como mucho una vez al día al abrir Festivos o la agenda; nunca desde Inicio). Ver `SPEC.md`, 3.5.
+- Probado en local con respuestas reales de la API guardadas (`tests/fixtures/generalitat-holidays.js`) y con la API real desde el navegador (L'Ametlla del Vallès, Barcelona, Salou y Viladecans). **Pendiente:** probarlo en la app contra el proyecto real.
+
 **Para una fase futura:**
 - Proponer los productos habituales al preparar un pedido, con cantidades modificables por pedido (líneas de pedido).
 

@@ -1,7 +1,10 @@
 <script setup>
-// Festivos: configuración manual por años (nacionales, autonómicos y
-// locales). Solo sirven para avisar en la agenda de que conviene confirmar
-// una entrega; nunca mueven ni cancelan pedidos.
+// Festivos por años (nacionales, autonómicos y locales). Solo sirven para
+// avisar en la agenda de que conviene confirmar una entrega; nunca mueven ni
+// cancelan pedidos.
+// - Los oficiales los mantiene la app con el calendario de la Generalitat del
+//   municipio de la tienda (HolidayOfficialSettings).
+// - Los demás se añaden a mano.
 //
 // El acceso a la página lo controla app/middleware/auth.global.js (sesión +
 // cuenta autorizada). Los datos los protege la RLS de Supabase.
@@ -154,7 +157,7 @@ const deletePending = computed(() =>
   <div class="space-y-8">
     <PageHeader
       title="Festivos"
-      description="Fechas en las que conviene confirmar las entregas con los proveedores. Se configuran a mano para cada año."
+      description="Fechas en las que conviene confirmar las entregas con los proveedores. Los oficiales se actualizan solos; puedes añadir otros a mano."
     >
       <template #actions>
         <UButton
@@ -168,6 +171,12 @@ const deletePending = computed(() =>
     </PageHeader>
 
     <OrderSectionNav />
+
+    <HolidayOfficialSettings
+      :holidays="holidays"
+      :today="today"
+      @synced="refresh()"
+    />
 
     <section
       ref="listRegion"
@@ -295,7 +304,7 @@ const deletePending = computed(() =>
       v-model:open="confirmOpen"
       :title="`¿Eliminar ${holidayToDelete?.name ?? 'el festivo'}?`"
       :description="holidayToDelete
-        ? `${formatHolidayDate(holidayToDelete.holiday_date)}. Dejará de mostrarse el aviso en las entregas de ese día. Los pedidos no cambian.`
+        ? `${formatHolidayDate(holidayToDelete.holiday_date)}. Dejará de mostrarse el aviso en las entregas de ese día. Los pedidos no cambian.${isOfficialHoliday(holidayToDelete) ? ' Es un festivo oficial: volverá a añadirse en la próxima actualización automática.' : ''}`
         : ''"
       confirm-label="Eliminar"
       confirm-icon="i-lucide-trash-2"

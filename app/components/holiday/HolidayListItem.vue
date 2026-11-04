@@ -12,6 +12,7 @@ const emit = defineEmits(['edit', 'delete'])
 
 const parts = computed(() => getHolidayDateParts(props.holiday.holiday_date))
 const dayMonth = computed(() => formatHolidayDayMonth(props.holiday.holiday_date))
+const official = computed(() => isOfficialHoliday(props.holiday))
 
 const menuItems = computed(() => [[
   {
@@ -54,9 +55,22 @@ const menuItems = computed(() => [[
       <p class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted">
         <span class="first-letter:uppercase">{{ dayMonth }}</span>
         <span class="whitespace-nowrap"><span aria-hidden="true">·&nbsp;</span>{{ getScopeLabel(holiday.scope) }}</span>
+        <span
+          v-if="official"
+          class="inline-flex items-center gap-1 rounded-sm bg-primary/8 px-1.5 py-px text-xs font-medium text-primary"
+          title="Del calendario oficial de la Generalitat; se actualiza solo"
+          data-holiday-official
+        >
+          <UIcon
+            name="i-lucide-landmark"
+            class="size-3"
+            aria-hidden="true"
+          />
+          Oficial
+        </span>
       </p>
       <p
-        v-if="holiday.notes"
+        v-if="holiday.notes && !(official && holiday.notes === OFFICIAL_NOTES)"
         class="mt-0.5 line-clamp-2 text-sm text-muted"
       >
         {{ holiday.notes }}

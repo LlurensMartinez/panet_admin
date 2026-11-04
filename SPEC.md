@@ -108,7 +108,12 @@ No se envían pedidos automáticamente al proveedor: la aplicación registra y o
 - Si la fecha de entrega de un pedido o de una previsión coincide con un festivo configurado, mostrar un aviso preventivo (en la agenda, el historial y el formulario del pedido). No se avisa de los pedidos marcados como «no se pide» ni de entregas ya pasadas.
 - No asumir que el proveedor no entregará. El aviso debe recomendar confirmar la entrega con el proveedor.
 - Nunca mover ni cancelar pedidos automáticamente. Si el proveedor confirma un cambio, la encargada corrige la fecha o marca el pedido como «no se pide».
-- La aplicación no integra un calendario oficial de festivos ni una API externa en la primera versión; la configuración manual es suficiente para el MVP.
+- **Festivos oficiales automáticos** (decisión revisada; antes solo había configuración manual): en Festivos se elige el municipio de la tienda entre los municipios con tiendas Panet (24, sin Andorra). La app consulta los datos abiertos de la Generalitat (calendario laboral de Cataluña y festivos locales del municipio) y guarda los festivos nacionales, autonómicos y locales del año actual y del siguiente.
+  - Se actualizan solos, como mucho una vez al día, al abrir Festivos o la agenda de Pedidos, y al cambiar de municipio. Inicio no los actualiza (sigue siendo solo de lectura). Un año que aún no está publicado no se toca.
+  - Los datos oficiales no traen el nombre de las fiestas: la app pone el nombre y el ámbito de los festivos de Cataluña según la fecha, y los locales se llaman «Fiesta local de <municipio>».
+  - Solo se añaden, cambian o retiran los festivos oficiales. Los manuales nunca se tocan, y si ocupan una fecha oficial se respetan. Editar un festivo oficial lo convierte en manual. Si se borra uno oficial, vuelve en la siguiente actualización.
+  - Si la Generalitat no responde, se avisa en Festivos y se reintenta más tarde. Si un municipio no tiene publicados sus festivos locales (por ejemplo, Viladecans en 2026), solo se importan los de Cataluña.
+  - La app sigue siendo para una sola tienda: el municipio solo sirve para saber qué festivos locales le corresponden.
 
 ### 3.6 Trabajadoras
 

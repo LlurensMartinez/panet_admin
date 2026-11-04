@@ -76,7 +76,9 @@ export function useHolidays() {
   async function updateHoliday(id, values) {
     const response = await request(() => supabase
       .from('holidays')
-      .update(normalizeHolidayInput(values))
+      // Al editar un festivo oficial pasa a ser manual: la actualización
+      // automática ya no lo cambia ni lo retira.
+      .update({ ...normalizeHolidayInput(values), source: 'manual' })
       .eq('id', id)
       .select(HOLIDAY_COLUMNS)
       .single())
@@ -99,8 +101,14 @@ export function useHolidays() {
     return { ok: true }
   }
 
+  // Sustituye la lista cargada (tras actualizar los festivos oficiales).
+  function setHolidays(list) {
+    holidays.value = sortHolidays(list)
+  }
+
   return {
     holidays,
+    setHolidays,
     status,
     loadError,
     refresh,

@@ -7,8 +7,9 @@
 import { DB_ERROR_KIND, classifyDatabaseError } from './database-errors.js'
 import { getTodayDate, isValidDate } from './overtime.js'
 
-// Columnas reales de public.holidays (migración 20261028221500).
-export const HOLIDAY_COLUMNS = 'id, holiday_date, name, scope, notes, created_at, updated_at'
+// Columnas reales de public.holidays (migración 20261028221500; `source`,
+// desde la 20261104160000).
+export const HOLIDAY_COLUMNS = 'id, holiday_date, name, scope, notes, source, created_at, updated_at'
 
 export const HOLIDAY_SCOPES = Object.freeze([
   Object.freeze({ value: 'national', label: 'Nacional' }),
@@ -53,6 +54,11 @@ function toUtcDate(value) {
 }
 
 // ---------------------------------------------------------------- Fechas
+
+/** true si el festivo lo mantiene la app a partir del calendario oficial. */
+export function isOfficialHoliday(holiday) {
+  return holiday?.source === 'official'
+}
 
 export function getScopeLabel(scope) {
   return SCOPE_LABELS.get(scope) ?? ''
@@ -272,6 +278,10 @@ const COMMON_MESSAGES = {
  * @param {'load' | 'save' | 'delete'} action
  */
 export function getHolidayErrorFeedback(response, action = 'save') {
+  // Columna inexistente (42703): falta la migración que añade `source`.
+  if (response?.error?.code === '42703') {
+    return { kind: DB_ERROR_KIND.MISSING, message: 'La base de datos aún no está preparada para los festivos oficiales: falta aplicar su migración (SUPABASE_SETUP.md, sección 13).', fields: [] }
+  }
   const kind = classifyDatabaseError(response) ?? DB_ERROR_KIND.UNKNOWN
   const fields = kind === DB_ERROR_KIND.VALIDATION ? getHolidayFieldErrors(response?.error) : []
   const duplicate = fields.some(field => field.message === DUPLICATE_MESSAGE)

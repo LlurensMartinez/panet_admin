@@ -49,6 +49,17 @@ const {
   status: holidaysStatus,
   refresh: refreshHolidays,
 } = useHolidays()
+// Festivos oficiales del municipio de la tienda: se actualizan solos al abrir
+// la agenda, como mucho una vez al día (nunca crean ni cambian pedidos).
+const { settingsStatus: shopSettingsStatus, sync: syncOfficialHolidays } = useOfficialHolidays()
+let officialChecked = false
+watch(shopSettingsStatus, async (value) => {
+  if (value !== 'success' || officialChecked || !import.meta.client) return
+  officialChecked = true
+  const result = await syncOfficialHolidays({ today: today.value })
+  if (result.ok && result.plan && hasPlanChanges(result.plan)) refreshHolidays()
+}, { immediate: true })
+
 const {
   orders,
   status,

@@ -34,6 +34,7 @@ Antes de instalar paquetes o asumir APIs, comprueba las versiones y patrones exi
 - Cambiar las fechas de un pedido concreto no modifica la configuración del proveedor.
 - Los pedidos preparados y los marcados como «no se pide» se conservan en el historial.
 - Los festivos generan advertencias preventivas, no afirmaciones sobre la política real de entrega del proveedor, y nunca mueven ni cancelan pedidos automáticamente.
+- Los festivos oficiales (`source = 'official'`) los mantiene la app a partir de los datos abiertos de la Generalitat y del municipio de la tienda (`shop_settings`); nunca se tocan los manuales. Elegir el municipio no convierte la app en multitienda.
 
 ## Seguridad
 - Nunca exponer secretos ni la clave `service_role` en el cliente.

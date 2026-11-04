@@ -138,17 +138,26 @@ Decisiones:
 - **`on delete restrict`:** no se puede borrar un proveedor con pedidos, ni siquiera desde el panel.
 - **Reglas que aplica solo la aplicación:** notas de 1000 caracteres como máximo; no se crean pedidos para proveedores inactivos.
 
+### `shop_settings`
+- `id smallint primary key default 1`, con `check (id = 1)`: una sola fila.
+- `municipality_code text null`, código INE de 5 cifras (`check ~ '^[0-9]{5}$'`), y `municipality_name text null`: van juntos (los dos vacíos o los dos con valor).
+- `holidays_synced_at timestamptz null`: última actualización correcta de los festivos oficiales.
+- `created_at`, `updated_at` (trigger `private.set_updated_at()`).
+- RLS: la cuenta autorizada puede leer, crear y modificar; nadie puede borrar. `anon` sin privilegios.
+- No convierte la app en multitienda: solo indica en qué municipio está la única tienda.
+
 ### `holidays`
 - `id uuid primary key default gen_random_uuid()`
 - `holiday_date date not null`, único (`holidays_holiday_date_unique`)
 - `name text not null`, con `check (name ~ '[^[:space:]]')`
 - `scope text not null`, con `check (scope in ('national', 'regional', 'local'))`: nacional, autonómico o local.
 - `notes text null`
+- `source text not null default 'manual'`, con `check (source in ('manual', 'official'))`: `official` = importado por la app del calendario oficial de la Generalitat (migración `20261104160000_shop_settings_official_holidays.sql`).
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
 Decisiones:
-- **Introducción manual**, sin API externa: son pocas fechas al año y los festivos locales dependen del municipio.
+- **Oficiales y manuales.** La app mantiene los festivos `official` del año actual y del siguiente a partir de los datos abiertos de la Generalitat (datasets `yf2b-mjr6` y `b4eh-r8up`) y del municipio de `shop_settings`. Nunca toca los `manual`. Editar uno oficial lo convierte en manual. La consulta se hace desde el navegador, sin clave, y solo envía el código del municipio.
 - **Una fila por fecha:** basta para avisar. Si un festivo es a la vez de dos ámbitos, se elige uno y se anota en `notes`.
 - **Se pueden corregir y eliminar:** no tienen historial que conservar.
 - **Solo avisos.** Un festivo en la fecha de entrega genera un aviso que recomienda confirmar la entrega con el proveedor; nunca mueve ni cancela pedidos.

@@ -52,6 +52,7 @@ supabase/
   tests/                     # comprobaciones SQL de autorización y RLS
   seeds/                     # scripts de carga de datos (se ejecutan a mano; ver SUPABASE_SETUP.md)
 tests/unit/                  # pruebas unitarias (npm test)
+tests/fixtures/              # respuestas reales de APIs externas para las pruebas
 nuxt.config.js
 eslint.config.mjs
 ```
