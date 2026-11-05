@@ -38,7 +38,8 @@ Mostrar un resumen práctico:
 Evitar estadísticas que no ayuden a tomar una acción.
 
 **Implementado (Bloque 5): resumen de pedidos de hoy y mañana.** Inicio (`/`) muestra, solo para consultar:
-- **Hoy:** los pedidos pendientes que se preparan hoy y los atrasados de la agenda (pendientes de los 7 días anteriores), marcados como atrasados. **Mañana:** los pendientes que se preparan mañana. «Hoy» es el día de la tienda (Europe/Madrid).
+- **Hoy:** los pedidos pendientes que se preparan hoy. **Mañana:** los pendientes que se preparan mañana. «Hoy» es el día de la tienda (Europe/Madrid).
+- **Atrasados** (los de la agenda: pendientes de los 7 días anteriores): no se mezclan con Hoy. Si hay alguno, un aviso siempre visible indica cuántos («Hay 3 pedidos atrasados») con el control «Mostrar pedidos atrasados». Al activarlo aparece la sección «Atrasados», antes de Hoy, con cada pedido marcado como atrasado; al desactivarlo se oculta. Por defecto (y al recargar) está oculta. Mostrarla u ocultarla no cambia ningún pedido, y en la agenda siguen igual. Sin atrasados no se muestra ni el aviso ni el control.
 - Una tarjeta por proveedor (sin repetirlo en la misma sección) con sus entregas, las notas del pedido, si es manual o tiene la fecha cambiada, el aviso de festivo de la entrega y sus productos habituales **activos** con la cantidad habitual y la unidad. Un proveedor sin productos activos aparece igualmente, con un mensaje y un enlace a su ficha.
 - Se calcula con la misma lógica que la agenda (`buildAgenda`): calendario y antelación de cada proveedor, pedidos manuales y fechas cambiadas. Los pedidos preparados y los «no se pide» no se muestran.
 - Las cantidades son las habituales del producto: orientativas, no confirmadas. Inicio no las modifica ni las inventa.

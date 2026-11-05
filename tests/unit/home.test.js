@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildHomeSummary,
   describeHomeSummary,
+  describeOverdue,
   formatHomeTitle,
   getGreeting,
   groupActiveProducts,
@@ -162,7 +163,8 @@ describe('buildHomeSummary: hoy y mañana', () => {
   it('respeta la fecha de preparación cambiada a mano', () => {
     // Previsto para preparar hoy, adelantado a ayer (y aún pendiente) → atrasado.
     const summary = summarize({ orders: [order({ id: 'p', prepare_date: '2026-10-28' })] })
-    const card = summary.today.cards.find(c => c.supplierId === 'har')
+    expect(summary.today.cards.find(c => c.supplierId === 'har')).toBeUndefined()
+    const card = summary.overdue.cards.find(c => c.supplierId === 'har')
     expect(card.overdue).toBe(true)
     expect(card.deliveries[0]).toMatchObject({ overdue: true, prepareDate: '2026-10-28' })
   })
@@ -186,14 +188,29 @@ describe('buildHomeSummary: hoy y mañana', () => {
     expect(summary.today).toMatchObject({ orderCount: 3, supplierCount: 2 })
   })
 
-  it('añade a hoy los pendientes atrasados de la agenda, primero y marcados', () => {
+  it('los atrasados de la agenda van en su propia sección, no en Hoy', () => {
     const summary = summarize({
       orders: [order({ id: 'old', supplier_id: 'fru', scheduled_delivery_date: null, delivery_date: '2026-10-29', prepare_date: '2026-10-26' })],
     })
-    expect(names(summary.today)).toEqual(['Frutas Mari', 'Envases Ruiz', 'Harinas del Sol'])
-    expect(summary.today.cards[0]).toMatchObject({ overdue: true })
-    expect(summary.today.overdueCount).toBe(1)
+    expect(names(summary.today)).toEqual(['Envases Ruiz', 'Harinas del Sol'])
+    expect(summary.today).toMatchObject({ orderCount: 2, overdueCount: 0 })
+    expect(names(summary.overdue)).toEqual(['Frutas Mari'])
+    expect(summary.overdue.cards[0]).toMatchObject({ overdue: true })
+    expect(summary.overdue).toMatchObject({ date: null, orderCount: 1, supplierCount: 1, overdueCount: 1 })
     expect(summary.tomorrow.overdueCount).toBe(0)
+  })
+
+  it('sin atrasados, la sección de atrasados está vacía', () => {
+    expect(summarize().overdue).toMatchObject({ cards: [], orderCount: 0 })
+  })
+
+  it('un proveedor puede estar a la vez en Atrasados y en Hoy (entregas distintas)', () => {
+    const summary = summarize({
+      orders: [order({ id: 'late', supplier_id: 'har', scheduled_delivery_date: null, delivery_date: '2026-10-28', prepare_date: '2026-10-27' })],
+    })
+    expect(names(summary.overdue)).toEqual(['Harinas del Sol'])
+    expect(names(summary.today)).toContain('Harinas del Sol')
+    expect(summary.today.cards.find(c => c.supplierId === 'har').deliveries.every(d => !d.overdue)).toBe(true)
   })
 
   it('no trae atrasados preparados, «no se pide» ni de hace más de 7 días', () => {
@@ -211,14 +228,13 @@ describe('buildHomeSummary: hoy y mañana', () => {
   it('como en la agenda, una previsión de los últimos 7 días sin marcar está atrasada', () => {
     const summary = buildHomeSummary({ suppliers: [frutas, harinas], products, today: TODAY })
     // Frutas Mari: entrega el miércoles 28, preparación el martes 27, sin marcar.
-    expect(names(summary.today)).toEqual(['Frutas Mari', 'Harinas del Sol'])
-    const harinasCard = summary.today.cards[1]
-    // Harinas: la previsión del jueves 22 (atrasada) y la de hoy, en una sola tarjeta.
-    expect(harinasCard.deliveries.map(d => [d.prepareDate, d.overdue])).toEqual([
-      ['2026-10-22', true],
-      ['2026-10-29', false],
-    ])
-    expect(summary.today).toMatchObject({ orderCount: 3, supplierCount: 2, overdueCount: 2 })
+    // Frutas Mari y la previsión de Harinas del jueves 22: atrasadas, aparte.
+    expect(names(summary.overdue)).toEqual(['Frutas Mari', 'Harinas del Sol'])
+    expect(summary.overdue.cards[1].deliveries.map(d => [d.prepareDate, d.overdue])).toEqual([['2026-10-22', true]])
+    expect(summary.overdue).toMatchObject({ orderCount: 2, supplierCount: 2 })
+    // Hoy solo tiene la previsión de hoy de Harinas.
+    expect(names(summary.today)).toEqual(['Harinas del Sol'])
+    expect(summary.today).toMatchObject({ orderCount: 1, supplierCount: 1, overdueCount: 0 })
   })
 
   it('avisa del festivo en la fecha de entrega, sin mover nada', () => {
@@ -289,10 +305,19 @@ describe('textos de Inicio', () => {
   it('resume los recuentos reales', () => {
     expect(describeHomeSummary(summarize())).toBe('Por preparar: 2 pedidos hoy y 1 mañana.')
     expect(describeHomeSummary(buildHomeSummary({ today: TODAY }))).toBe('No hay pedidos pendientes de preparar ni hoy ni mañana.')
-    expect(describeHomeSummary({ today: { orderCount: 1, overdueCount: 1 }, tomorrow: { orderCount: 0 } }))
-      .toBe('Por preparar: 1 pedido hoy (1 atrasado) y ninguno mañana.')
+    expect(describeHomeSummary({ today: { orderCount: 1, overdueCount: 0 }, tomorrow: { orderCount: 0 } }))
+      .toBe('Por preparar: 1 pedido hoy y ninguno mañana.')
+    // Los atrasados no entran en la frase: tienen su propio aviso.
+    expect(describeHomeSummary({ today: { orderCount: 0 }, tomorrow: { orderCount: 0 }, overdue: { orderCount: 4 } }))
+      .toBe('No hay pedidos pendientes de preparar ni hoy ni mañana.')
     expect(describeHomeSummary({ today: { orderCount: 0 }, tomorrow: { orderCount: 3 } }))
       .toBe('Por preparar: ninguno hoy y 3 mañana.')
+  })
+
+  it('aviso de atrasados', () => {
+    expect(describeOverdue(0)).toBe('')
+    expect(describeOverdue(1)).toBe('Hay 1 pedido atrasado')
+    expect(describeOverdue(3)).toBe('Hay 3 pedidos atrasados')
   })
 
   it('plural', () => {

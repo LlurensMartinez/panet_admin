@@ -1,11 +1,13 @@
 <script setup>
-// Una sección del resumen de Inicio (Hoy o Mañana): cabecera con el día y los
-// recuentos reales, y una tarjeta por proveedor. Solo presenta datos ya
-// calculados por buildHomeSummary().
+// Una sección del resumen de Inicio (Hoy, Mañana o Atrasados): cabecera con el
+// día y los recuentos reales, y una tarjeta por proveedor. Solo presenta datos
+// ya calculados por buildHomeSummary().
 const props = defineProps({
   section: { type: Object, default: null },
-  // 'today' | 'tomorrow'
+  // 'today' | 'tomorrow' | 'overdue'
   kind: { type: String, required: true },
+  // Ocupa todo el ancho (tarjetas en dos columnas también en escritorio).
+  wide: { type: Boolean, default: false },
   today: { type: String, required: true },
   loading: { type: Boolean, default: false },
   productsLoading: { type: Boolean, default: false },
@@ -13,14 +15,19 @@ const props = defineProps({
 })
 
 const isToday = computed(() => props.kind === 'today')
+const isOverdue = computed(() => props.kind === 'overdue')
 const headingId = computed(() => `home-${props.kind}`)
-const title = computed(() => (isToday.value ? 'Hoy' : 'Mañana'))
+const title = computed(() => (isOverdue.value ? 'Atrasados' : isToday.value ? 'Hoy' : 'Mañana'))
+const icon = computed(() => (isOverdue.value ? 'i-lucide-alarm-clock' : isToday.value ? 'i-lucide-sun' : 'i-lucide-sunrise'))
+const iconClass = computed(() => {
+  if (isOverdue.value) return 'bg-amber-50 text-amber-700 ring ring-amber-200 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/25'
+  return isToday.value ? 'bg-primary text-inverted shadow-xs' : 'bg-default text-primary ring ring-default'
+})
 // Hoy ya se nombra en el título de la página: aquí se aclara qué incluye.
 const dayLabel = computed(() => {
+  if (isOverdue.value) return 'Pendientes de preparar de los últimos 7 días'
   if (!props.section?.date) return ''
-  if (isToday.value) {
-    return !props.loading && props.section.overdueCount ? 'Para preparar hoy, con los atrasados' : 'Para preparar hoy'
-  }
+  if (isToday.value) return 'Para preparar hoy'
   return formatAgendaDay(props.section.date, props.today).subtitle
 })
 
@@ -46,11 +53,11 @@ const emptyText = computed(() => {
       <div class="flex min-w-0 flex-[1_1_14rem] items-center gap-3">
         <span
           class="grid size-10 shrink-0 place-items-center rounded-lg"
-          :class="isToday ? 'bg-primary text-inverted shadow-xs' : 'bg-default text-primary ring ring-default'"
+          :class="iconClass"
           aria-hidden="true"
         >
           <UIcon
-            :name="isToday ? 'i-lucide-sun' : 'i-lucide-sunrise'"
+            :name="icon"
             class="size-5"
           />
         </span>
@@ -131,8 +138,9 @@ const emptyText = computed(() => {
     <!-- Proveedores -->
     <ul
       v-else-if="section?.cards.length"
-      class="gap-3 md:columns-2 lg:columns-1"
-      :aria-label="`Proveedores para ${title.toLowerCase()}`"
+      class="gap-3 md:columns-2"
+      :class="wide ? '' : 'lg:columns-1'"
+      :aria-label="isOverdue ? 'Proveedores con pedidos atrasados' : `Proveedores para ${title.toLowerCase()}`"
     >
       <!-- Columnas (y no rejilla) para que las tarjetas de distinta altura no
            dejen huecos en tableta. -->

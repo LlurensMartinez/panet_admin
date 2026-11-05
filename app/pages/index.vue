@@ -7,6 +7,9 @@
 // - No duplica la lógica de la agenda: buildHomeSummary() parte de
 //   buildAgenda() (previsiones, pedidos manuales, fechas cambiadas, festivos y
 //   atrasados de los últimos 7 días).
+// - Los atrasados no se mezclan con Hoy: se avisa de cuántos hay y se
+//   muestran en su propia sección solo si se pide («Mostrar pedidos
+//   atrasados»). Mostrarlos u ocultarlos no cambia ningún pedido.
 // - Las cantidades son las habituales de cada producto: orientativas.
 //
 // El acceso a la página lo controla app/middleware/auth.global.js (sesión +
@@ -92,9 +95,15 @@ const summaryText = computed(() => {
   return describeHomeSummary(summary.value)
 })
 
+// Atrasados: ocultos por defecto; solo se ven al activar el control.
+const overdueCount = computed(() => (loading.value || summaryError.value ? 0 : summary.value.overdue.orderCount))
+const showOverdue = ref(false)
+const overdueSectionId = useId()
+
 const hasSchedules = computed(() => suppliers.value.some(hasScheduledDeliveries))
 const nothingPlanned = computed(() => !loading.value && !summaryError.value
   && !hasSchedules.value
+  && overdueCount.value === 0
   && summary.value.today.orderCount === 0 && summary.value.tomorrow.orderCount === 0
   && summary.value.today.doneCount === 0 && summary.value.tomorrow.doneCount === 0)
 
@@ -229,6 +238,48 @@ function retry() {
           :actions="[{ label: 'Reintentar', color: 'warning', variant: 'outline', icon: 'i-lucide-refresh-cw', onClick: () => refreshHolidays() }]"
           :ui="{ description: 'text-sm text-default' }"
           data-home-alert="holidays"
+        />
+      </div>
+
+      <!-- Atrasados: aviso siempre visible si los hay; la sección, a demanda -->
+      <div
+        v-if="overdueCount"
+        class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl bg-amber-50 px-4 py-3 ring ring-amber-200 sm:px-5 dark:bg-amber-400/10 dark:ring-amber-400/25"
+        data-home-overdue-notice
+      >
+        <p class="flex min-w-0 items-center gap-2.5 text-[0.9375rem] font-medium text-amber-900 dark:text-amber-200">
+          <UIcon
+            name="i-lucide-alarm-clock"
+            class="size-5 shrink-0 text-amber-700 dark:text-amber-300"
+            aria-hidden="true"
+          />
+          <span>
+            {{ describeOverdue(overdueCount) }}
+            <span class="font-normal text-amber-800 dark:text-amber-300">de los últimos 7 días</span>
+          </span>
+        </p>
+        <USwitch
+          v-model="showOverdue"
+          label="Mostrar pedidos atrasados"
+          color="warning"
+          :aria-controls="overdueSectionId"
+          :ui="{ root: 'items-center', label: 'block py-3 text-sm font-medium text-amber-900 dark:text-amber-200' }"
+          data-home-overdue-toggle
+        />
+      </div>
+
+      <div
+        v-if="overdueCount"
+        :id="overdueSectionId"
+      >
+        <HomeDaySection
+          v-if="showOverdue"
+          kind="overdue"
+          wide
+          :section="summary.overdue"
+          :today="today"
+          :products-loading="productsLoading"
+          :products-unavailable="productsUnavailable"
         />
       </div>
 

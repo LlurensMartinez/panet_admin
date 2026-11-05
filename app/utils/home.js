@@ -5,9 +5,10 @@
 // las previsiones, los pedidos manuales, las fechas cambiadas, los festivos y
 // los atrasados se calculan exactamente igual que en /pedidos. Este módulo
 // solo selecciona y agrupa:
-// - Hoy: pedidos PENDIENTES que se preparan hoy, más los atrasados de la
-//   agenda (pendientes de los últimos 7 días), marcados como tales.
+// - Hoy: pedidos PENDIENTES que se preparan hoy.
 // - Mañana: pedidos PENDIENTES que se preparan mañana.
+// - Atrasados: los atrasados de la agenda (pendientes de los últimos 7 días),
+//   en una sección aparte que la página muestra solo si se pide.
 // - Los preparados y los «no se pide» no se muestran (solo se cuentan para
 //   el mensaje de «todo listo»).
 // - Cada proveedor aparece una sola vez por sección, con sus entregas y sus
@@ -99,8 +100,10 @@ function buildSection(date, items, extraItems, productsBySupplier, today, now) {
 
 /**
  * Resumen de Inicio.
- * @returns {{ today: object, tomorrow: object }} cada sección con
- *   { date, cards, orderCount, supplierCount, overdueCount, doneCount }
+ * @returns {{ today: object, tomorrow: object, overdue: object }} cada sección
+ *   con { date, cards, orderCount, supplierCount, overdueCount, doneCount }.
+ *   Hoy y Mañana no incluyen los atrasados (overdueCount 0); `overdue` los
+ *   agrupa por proveedor (date null).
  */
 export function buildHomeSummary({ suppliers = [], orders = [], holidays = [], products = [], today, now = new Date() }) {
   const agenda = buildAgenda({ suppliers, orders, holidays, today })
@@ -109,8 +112,9 @@ export function buildHomeSummary({ suppliers = [], orders = [], holidays = [], p
   const itemsOf = date => agenda.days.find(day => day.date === date)?.items ?? []
 
   return {
-    today: buildSection(today, itemsOf(today), agenda.overdue, productsBySupplier, today, now),
+    today: buildSection(today, itemsOf(today), [], productsBySupplier, today, now),
     tomorrow: buildSection(tomorrow, itemsOf(tomorrow), [], productsBySupplier, today, now),
+    overdue: buildSection(null, [], agenda.overdue, productsBySupplier, today, now),
   }
 }
 
@@ -141,7 +145,11 @@ export function describeHomeSummary(summary) {
   if (today === 0 && tomorrow === 0) return 'No hay pedidos pendientes de preparar ni hoy ni mañana.'
   const todayText = today === 0 ? 'ninguno hoy' : `${today === 1 ? '1 pedido' : `${today} pedidos`} hoy`
   const tomorrowText = tomorrow === 0 ? 'ninguno mañana' : `${tomorrow} mañana`
-  const overdue = summary?.today?.overdueCount ?? 0
-  const overdueText = overdue === 0 ? '' : ` (${overdue === 1 ? '1 atrasado' : `${overdue} atrasados`})`
-  return `Por preparar: ${todayText}${overdueText} y ${tomorrowText}.`
+  return `Por preparar: ${todayText} y ${tomorrowText}.`
+}
+
+/** «Hay 1 pedido atrasado» / «Hay 3 pedidos atrasados» (o '' si no hay). */
+export function describeOverdue(count) {
+  if (!count) return ''
+  return count === 1 ? 'Hay 1 pedido atrasado' : `Hay ${count} pedidos atrasados`
 }
