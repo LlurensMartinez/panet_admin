@@ -147,7 +147,7 @@ Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, cale
   - `app/pages/empleados.vue`.
 - Probado solo en local (PostgreSQL 16 + PostgREST 13). **Pendiente:** probarlo contra el proyecto real después de aplicar la migración de la sección 14.
 
-**Bloque 4 — Ficha de trabajadora** (`/empleados/[id]`) *(hecho en local; solo consulta)*
+**Bloque 4 — Ficha de trabajadora** (`/empleados/[id]`) *(hecho en local; el editor del horario se añadió en el Bloque 8)*
 - **Datos de la ficha**, editables con el mismo formulario y las mismas validaciones del listado.
 - **Situación:** en activo o de baja, con su último día de trabajo. Si se desactivó antes del módulo, se indica que no consta.
 - **Horario habitual:**
@@ -164,7 +164,7 @@ Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, cale
   - `EmployeeWeekSchedule.vue` y `EmployeeScheduleHistory.vue`.
 
   `app/pages/empleados.vue` pasa a `app/pages/empleados/index.vue`.
-- **Cambio respecto al plan anterior:** el editor del horario habitual (nueva versión desde una fecha, turnos por día, «copiar a los demás días») no se ha hecho en este bloque, a petición de la encargada. Queda pendiente para un bloque posterior.
+- **Cambio respecto al plan anterior:** el editor del horario habitual no se hizo en este bloque, a petición de la encargada. Se ha hecho en el Bloque 8 (sin «copiar a los demás días»).
 
 **Bloque 5 — Calendario semanal** (`/horarios`, solo consulta) *(hecho en local)*
 - Semana de lunes a domingo con las empleadas que tienen actividad esa semana:
@@ -230,6 +230,27 @@ Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, cale
   - `app/utils/schedules.js` y `app/utils/week-calendar.js` (horario cerrado).
 - Limitación conocida: sin la fecha de vuelta guardada, una reactivación sin copiar el horario no permite separar los días de baja anteriores a la vuelta (se marcan como «Horario cerrado») ni, si después se crea un horario nuevo, los días sin horario posteriores a la vuelta (se marcan como «Baja»).
 - Pendiente: repaso final de la documentación de la fase.
+
+**Bloque 8 — Editor del horario habitual** (desde la ficha) *(hecho en local)*
+- En `/empleados/[id]`: «Crear horario habitual» (sin horario vigente ni próximo) o «Cambiar horario habitual». Solo con la empleada activa; si está de baja, se indica que hay que activarla. Sin la migración de horarios, la ficha lo sigue indicando y no ofrece el editor.
+- **Editor semanal** (diálogo): de lunes a domingo, cada día laborable o de descanso, hasta 3 turnos con inicio y fin, total del día y de la semana. En móvil, los días van apilados; en escritorio, en filas.
+- **Guardado:** una versión nueva de `employee_schedules` con los siete días (`[]` en los de descanso), desde la fecha elegida (propuesta: el lunes siguiente). Nunca se modifica ni se borra una versión: la anterior rige hasta el día antes. Una sola sentencia.
+- **Validaciones** (`app/utils/schedule-editor.js`, con las funciones de `schedules.js` y los mensajes de turnos de `schedule-exceptions.js`):
+  - turnos: máximo, formato, inicio distinto de fin, solapes en el día y turnos nocturnos que pisan el día siguiente (también el domingo con el lunes);
+  - fecha: válida, posterior a la última versión y, salvo la primera, desde el lunes de esta semana;
+  - el primer día no puede chocar con un turno nocturno del día anterior (horario anterior o cambio de un día);
+  - empleada de baja: no se guarda.
+
+  La base de datos repite las comprobaciones, y sus errores (`PS001`-`PS003`, `PS006`, `23505`, `23514`) se muestran con mensajes propios.
+- **Avisos que no impiden guardar:** horas que no existen en el próximo cambio al horario de verano y choques con cambios de un día ya guardados. Notas sobre los turnos con más o menos horas reales por los cambios de hora, y si el horario es igual al anterior.
+- **Al guardar,** la ficha se recarga (horario, próximo horario e historial). El calendario y el resumen de `/horarios` leen las versiones al abrirse.
+- No toca cambios de un día, ausencias, horas extra ni las reglas de baja y reactivación. Sin migraciones nuevas.
+- Archivos:
+  - `app/utils/schedule-editor.js`, con pruebas en `tests/unit/schedule-editor.test.js`;
+  - `app/composables/useScheduleVersions.js`;
+  - `EmployeeScheduleEditorModal.vue` y `EmployeeScheduleDayEditor.vue`;
+  - `app/pages/empleados/[id].vue` (botón y editor);
+  - `app/utils/schedule-exceptions.js` (exporta `getShiftValidationMessage`, sin cambiar su comportamiento).
 
 Los festivos y sus avisos se trasladaron a la Fase 3.
 

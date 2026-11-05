@@ -177,6 +177,12 @@ Sustituye al alcance inicial de la opción A («no construir un planificador ava
 - El total semanal se calcula automáticamente.
 - Los turnos no cambian de una semana a otra: no hay que crear el horario cada semana.
 - Cambiar el horario crea una **versión nueva** desde la fecha que se elija (por defecto, el lunes siguiente; como pronto, el lunes de la semana actual, salvo la primera versión de cada trabajadora). Las versiones anteriores se conservan: las semanas pasadas siguen mostrando el horario que tenían. Una versión rige hasta el día antes de la siguiente, así que nunca se solapan. Puede haber trabajadoras sin horario o con un horario que empieza en el futuro.
+- **Editor** (botón «Crear horario habitual» si no tiene uno vigente ni próximo; «Cambiar horario habitual» si lo tiene; solo con la trabajadora en activo):
+  - cada día, laborable o de descanso, con hasta 3 turnos (inicio y fin) y su total; total semanal;
+  - fecha desde la que rige; al cambiar, parte de su último horario y explica hasta cuándo se aplica el anterior;
+  - se guarda como una versión nueva con los siete días. Las versiones del historial no se editan;
+  - comprueba los turnos (máximo, formato, solapes en el día y entre días consecutivos, también del domingo con el lunes), la fecha (después de la última versión y, salvo la primera, desde el lunes de esta semana) y que el primer día no choque con un turno nocturno del día anterior;
+  - **avisa, sin impedir guardar,** de las horas que no existen el próximo cambio al horario de verano y de los choques con cambios de un día ya guardados: afectan a días concretos y se corrigen con un cambio de un día. También indica qué turnos durarán más o menos horas reales en los próximos cambios de hora.
 
 **Calendario semanal conjunto** (`/horarios`; lunes-domingo, una fila por trabajadora, navegación entre semanas; en móvil, vista por día con selector de día):
 - Muestra los turnos y las horas previstas de cada trabajadora y de toda la plantilla.
