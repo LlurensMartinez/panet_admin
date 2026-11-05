@@ -129,6 +129,15 @@ No recopilar datos sensibles o administrativos que no sean necesarios para las f
 
 Al desactivar una trabajadora, sus registros históricos deben conservarse.
 
+Cada trabajadora tiene una ficha (`/empleados/[id]`) con sus datos, su situación (en activo o de baja, con su último día de trabajo) y su horario habitual con el historial de versiones. Por ahora el horario solo se consulta desde la ficha.
+
+Con el módulo de horarios (3.9), dar de baja a una trabajadora pide su **último día de trabajo** (incluido; como muy tarde, hoy):
+- Desde el día siguiente deja de aparecer en la planificación; en las semanas pasadas se sigue viendo su horario.
+- Se elimina solo su planificación futura (cambios de un día, ausencias y horarios que empiezan después de hoy), mostrando antes qué se eliminará y pidiendo confirmación. Las ausencias en curso se acortan hasta hoy.
+- Nunca se eliminan ni modifican horarios vigentes o pasados ni registros de horas extra. Todo se guarda en una sola operación: si algo falla, no cambia nada.
+- Al reactivarla se indica la fecha de vuelta y se puede copiar su último horario desde esa fecha. El periodo de baja queda sin horario.
+- Las trabajadoras sin horarios se pueden desactivar y activar como hasta ahora.
+
 ### 3.7 Horas extra
 
 La encargada registra manualmente:
@@ -161,11 +170,41 @@ Permitir copiar/generar un texto simple para compartir con la responsable de zon
 
 ### 3.9 Horarios, vacaciones y ausencias
 
-Alcance inicial de la opción A:
-- Consultar los horarios habituales que se decida registrar.
-- Registrar vacaciones y ausencias por trabajadora, con fecha de inicio y finalización.
-- No construir un planificador avanzado de turnos ni asignación automática de personal.
-- El detalle exacto de los datos de horarios habituales debe validarse antes de implementar este submódulo.
+Sustituye al alcance inicial de la opción A («no construir un planificador avanzado de turnos»): la encargada lo amplió el 5 de noviembre de 2026. Sigue sin haber asignación automática de personal, fichajes ni nóminas.
+
+**Horario habitual por trabajadora** (en su ficha):
+- De lunes a domingo, con uno o varios turnos por día (como mucho 3), cada uno con hora de inicio y fin. Un día sin turnos es de descanso.
+- El total semanal se calcula automáticamente.
+- Los turnos no cambian de una semana a otra: no hay que crear el horario cada semana.
+- Cambiar el horario crea una **versión nueva** desde la fecha que se elija (por defecto, el lunes siguiente; como pronto, el lunes de la semana actual, salvo la primera versión de cada trabajadora). Las versiones anteriores se conservan: las semanas pasadas siguen mostrando el horario que tenían. Una versión rige hasta el día antes de la siguiente, así que nunca se solapan. Puede haber trabajadoras sin horario o con un horario que empieza en el futuro.
+
+**Calendario semanal conjunto** (`/horarios`; lunes-domingo, una fila por trabajadora, navegación entre semanas; en móvil, vista por día con selector de día):
+- Muestra los turnos y las horas previstas de cada trabajadora y de toda la plantilla.
+- Aparecen las trabajadoras con actividad en la semana: con horario, cambios o ausencias, o en activo (desde la semana actual). Nunca después de su último día de trabajo.
+- Desde ahí se puede cambiar un día concreto sin alterar el horario habitual.
+
+**Excepciones puntuales**, que solo afectan a las fechas indicadas:
+- Cambiar los turnos de un día, añadir o quitar un turno, o marcar el día como libre. Al quitar el cambio, el día vuelve al horario habitual.
+- Vacaciones, permisos y otras ausencias, por rango de fechas. Tipos: Vacaciones, Permiso y Otro. No se guardan motivos médicos ni datos de salud. Las ausencias de una misma trabajadora no se pueden solapar.
+- Debe quedar claro qué turnos son habituales y cuáles son excepciones.
+- Una excepción nunca modifica el horario habitual ni sus versiones.
+
+**Prioridad para cada trabajadora y día:** baja (después de su último día de trabajo, o en un periodo de baja anterior) → ausencia → cambio de ese día → horario habitual vigente → sin horario.
+
+**Turnos y cálculo de horas:**
+- Si la hora de fin es igual o anterior a la de inicio, el turno acaba al día siguiente (22:00-02:00). No se admite inicio igual a fin.
+- Un turno que pasa de medianoche cuenta **entero en el día en que empieza** (y en su semana).
+- No se admiten turnos solapados, tampoco cuando un turno nocturno se alarga hasta el día siguiente, ni en el horario habitual (incluido el domingo con el lunes) ni en las excepciones.
+- Las horas son **horas reales en Europe/Madrid**:
+  - la noche del cambio al horario de verano (último domingo de marzo) dura una hora menos y la del cambio al de invierno (último domingo de octubre), una más;
+  - una hora que no existe por el cambio al horario de verano (de 02:00 a 02:59 el último domingo de marzo) no se corrige: se muestra un error comprensible y se pide modificar el turno;
+  - una hora que se repite por el cambio al horario de invierno (de 02:00 a 02:59 el último domingo de octubre) se toma como su **primera aparición, todavía en horario de verano (UTC+2)**. Ejemplo: 01:00-03:00 son 3 horas reales; 02:30-06:00 son 4 h 30 min.
+- Totales por día, por semana (lunes-domingo), por trabajadora y de toda la plantilla.
+
+**Integración:**
+- Las trabajadoras inactivas no aparecen en la planificación posterior a su baja (ver 3.6).
+- Los festivos solo se marcan en el calendario a modo informativo: no cambian las horas previstas.
+- Las horas extra no cambian. Queda preparada (sin mostrarse todavía) la comparación entre horas previstas y horas extra registradas; las horas extra se siguen introduciendo a mano (3.7).
 
 ## 4. Experiencia de uso
 
@@ -193,7 +232,7 @@ Los cambios guardados en un dispositivo deben estar disponibles en el otro tras 
 - Lectura de fotografías o IA.
 - Aplicación nativa para iOS/Android.
 - Modo sin conexión.
-- Planificación avanzada o automática de turnos.
+- Asignación automática de personal, fichajes y control horario real (el calendario de 3.9 es una planificación prevista).
 
 ## 6. Criterios de aceptación
 
@@ -207,6 +246,6 @@ Los cambios guardados en un dispositivo deben estar disponibles en el otro tras 
 8. Puede registrar horas extra como horas/minutos y corregirlas.
 9. Los totales semanales y mensuales son correctos y se muestran por trabajadora y para toda la tienda.
 10. Puede generar un resumen compartible.
-11. Puede registrar vacaciones/ausencias y consultar horarios habituales dentro del alcance acordado.
+11. Puede configurar el horario habitual de cada trabajadora, gestionar excepciones y ausencias, y consultar el calendario semanal con las horas previstas, sin que las excepciones alteren el horario habitual.
 12. La aplicación funciona en móvil y ordenador.
 13. Los datos no son accesibles sin autorización.

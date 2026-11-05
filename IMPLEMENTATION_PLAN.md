@@ -103,14 +103,105 @@ A partir de la hoja «Proveïdors Panet L'Ametlla» (12/06/2026), que tenía cas
 Los pedidos y su historial forman parte de la Fase 3. Se mantiene la numeración del resto de fases.
 
 ## Fase 5 — Horarios y ausencias
-- Confirmar el modelo de horarios habituales antes de implementarlo.
-- Implementar consulta de horarios.
-- Implementar vacaciones y ausencias.
-- Las tablas `employee_regular_schedules` y `employee_absences` se crean con RLS y políticas basadas en `private.is_authorized()`.
+Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, calendario semanal, excepciones, ausencias y baja con fecha. Ver `SPEC.md` (3.6 y 3.9) y `DATA_MODEL.md` (*Horarios del personal*). Cada bloque termina con pruebas unitarias, lint, build, las suites de navegador existentes y una revisión antes de seguir.
 
-Los festivos y sus avisos se han trasladado a la Fase 3.
+**Bloque 1 — Documentación y base de datos** *(hecho)*
+- `SPEC.md`, `DATA_MODEL.md` y este plan actualizados con las decisiones.
+- Migración `supabase/migrations/20261105100000_employee_schedules.sql`:
+  - columna `employees.last_working_date`;
+  - tablas `employee_schedules`, `employee_day_overrides` y `employee_absences`, con RLS;
+  - triggers de reglas;
+  - funciones `public.deactivate_employee` y `public.reactivate_employee`.
 
-**Aceptación:** se pueden consultar horarios y ausencias.
+  Solo añade objetos.
+- Comprobaciones en `supabase/tests/employee_schedules_checks.sql` (147 filas: 145 `OK` + 2 `INFO`). Guía en `SUPABASE_SETUP.md`, sección 14.
+- Probado solo en PostgreSQL local. **Pendiente:** aplicarla en el proyecto real.
+
+**Bloque 2 — Lógica pura** (`app/utils/schedules.js`) *(hecho)*
+- Horario de una empleada en una fecha, con la prioridad baja → ausencia → cambio del día → horario habitual. Incluye versiones, periodos sin horario y versiones de fin.
+- Horas reales de Madrid:
+  - un turno nocturno cuenta entero en el día en que empieza;
+  - las horas inexistentes de primavera dan error y no suman;
+  - las horas repetidas de otoño se toman en su primera aparición.
+- Validación de turnos con las mismas reglas que la base de datos.
+- Conflictos entre días consecutivos, incluido domingo con lunes y entre semanas.
+- Totales por día, semana, empleada y plantilla. Visibilidad de cada empleada en una semana.
+- `buildPlannedVsOvertime`, preparada pero sin usar en ninguna pantalla.
+- Pruebas: `tests/unit/schedules.test.js` (121 casos), que pasan también con el sistema en UTC, Nueva York y Tokio. En local:
+  - la validación de turnos se ha comparado con las funciones SQL en 4000 casos aleatorios, sin diferencias;
+  - el horario de cada día, con `private.planned_shifts` en 61 fechas, sin diferencias.
+
+**Bloque 3 — Baja y reactivación con fecha** *(hecho en local)*
+- **Desactivar:** el diálogo pide el último día de trabajo (incluido; hoy por defecto, como muy tarde hoy). Antes de confirmar enseña qué planificación posterior a hoy se eliminará (horarios, cambios de un día y ausencias), qué ausencias se acortan y qué se conserva. Las fechas no válidas se explican y no dejan confirmar.
+- **Reactivar** a una empleada con horario: pide la fecha de vuelta (por defecto, el lunes que viene) y ofrece copiar su último horario habitual. Si vuelve al día siguiente de una baja hecha hoy, se anula el cierre.
+- **Cómo se guarda:**
+  - con planificación, con `public.deactivate_employee` y `public.reactivate_employee` (`supabase.rpc`), cada una en una sola transacción;
+  - sin planificación, con una sola actualización de `employees`, como antes (estado y fecha de baja); se activan sin diálogo;
+  - sin la migración de horarios aplicada, todo funciona exactamente como antes.
+- Mensajes propios para los códigos `PS0xx` y para los errores de red, sesión y permisos.
+- Horas extra sin cambios: `EMPLOYEE_COLUMNS` no cambia y la pantalla de horas extra no se ha tocado.
+- Archivos:
+  - `app/utils/employee-leave.js` (lógica pura), con pruebas en `tests/unit/employee-leave.test.js`;
+  - `app/composables/useEmployeeLeave.js`;
+  - `EmployeeDeactivateModal.vue` (adaptado), `EmployeeLeavePreview.vue` y `EmployeeReactivateModal.vue`;
+  - `app/pages/empleados.vue`.
+- Probado solo en local (PostgreSQL 16 + PostgREST 13). **Pendiente:** probarlo contra el proyecto real después de aplicar la migración de la sección 14.
+
+**Bloque 4 — Ficha de trabajadora** (`/empleados/[id]`) *(hecho en local; solo consulta)*
+- **Datos de la ficha**, editables con el mismo formulario y las mismas validaciones del listado.
+- **Situación:** en activo o de baja, con su último día de trabajo. Si se desactivó antes del módulo, se indica que no consta.
+- **Horario habitual:**
+  - el vigente hoy, con sus fechas, de lunes a domingo, con el total semanal y el aviso del próximo horario si lo hay;
+  - si no tiene, se indica claramente (sin horario o cerrado tras una baja);
+  - si está de baja, el último horario aplicable con sus fechas de vigencia, marcado como «No es un horario actual».
+- **Historial de versiones:** de la más reciente a la más antigua, cada una marcada como próxima, vigente o anterior.
+- **Desactivar y activar** con el mismo flujo del listado. Esa lógica se ha sacado de la página a `useEmployeeStatusFlow`, que comparten las dos pantallas.
+- Desde el listado, el nombre de cada empleada enlaza con su ficha, y la ficha tiene un enlace de vuelta a «Empleados». Las empleadas inexistentes o no accesibles se muestran como «Empleado no encontrado».
+- Archivos:
+  - `app/utils/employee-profile.js`, con pruebas en `tests/unit/employee-profile.test.js`;
+  - `app/composables/useEmployeeStatusFlow.js`;
+  - `app/pages/empleados/[id].vue`;
+  - `EmployeeWeekSchedule.vue` y `EmployeeScheduleHistory.vue`.
+
+  `app/pages/empleados.vue` pasa a `app/pages/empleados/index.vue`.
+- **Cambio respecto al plan anterior:** el editor del horario habitual (nueva versión desde una fecha, turnos por día, «copiar a los demás días») no se ha hecho en este bloque, a petición de la encargada. Queda pendiente para un bloque posterior.
+
+**Bloque 5 — Calendario semanal** (`/horarios`, solo consulta) *(hecho en local)*
+- Semana de lunes a domingo con las empleadas que tienen actividad esa semana:
+  - las que tienen horario, cambios o ausencias;
+  - las que están en activo, desde la semana actual;
+  - nunca después de su último día de trabajo.
+- Las filas van ordenadas por nombre y cada nombre enlaza con su ficha.
+- **Cada día:** turnos y horas reales, o descanso, día libre, ausencia, «Baja» o «Sin horario».
+  - Los cambios de un día y las ausencias se distinguen del horario habitual.
+  - Los turnos nocturnos se marcan con «+1» y cuentan en el día en que empiezan.
+  - Se marcan los conflictos y las horas que no existen por el cambio de hora.
+- **Totales:** por empleada, por día y de la tienda en la semana.
+- **Navegación:** semana anterior, siguiente y «Esta semana», con la semana en la URL (`?semana=AAAA-MM-DD`).
+- **Diseño:** cuadrícula en escritorio (desde 1024 px) y vista diaria con selector de día en móvil y tabletas.
+- Festivos marcados solo de forma informativa (`SPEC.md`, 3.9).
+- Nueva entrada «Horarios» en la navegación principal (también en la barra inferior del móvil, que pasa a 5 secciones). En tabletas, la cabecera oculta los iconos de la navegación para que quepan las cinco secciones.
+- Sin la migración de horarios, la página lo indica.
+- Toda la resolución se hace con `buildWeekPlan` (`app/utils/schedules.js`).
+  - **Cambio de reglas:** una empleada desactivada sin fecha de baja ya no aparece en semanas futuras.
+- Archivos:
+  - `app/utils/week-calendar.js` (presentación), con pruebas en `tests/unit/week-calendar.test.js`;
+  - `app/composables/useWeekPlan.js`;
+  - `app/pages/horarios.vue`;
+  - `app/components/schedule/` (`ScheduleWeekNav`, `ScheduleWeekGrid`, `ScheduleDayList` y `ScheduleDayCell`).
+
+**Bloque 6 — Excepciones**
+- Cambiar un día desde el calendario, marcarlo libre o volver al horario habitual.
+- Vacaciones, permisos y otras ausencias desde la ficha y el calendario.
+- Diferencia visual entre turnos habituales y excepciones, y avisos de «Turnos solapados».
+
+**Bloque 7 — Resumen de horas previstas y repaso final**
+- Totales por día, semana, trabajadora y plantilla.
+- Repaso de la documentación.
+
+Los festivos y sus avisos se trasladaron a la Fase 3.
+
+**Aceptación:** se puede configurar el horario habitual de cada trabajadora sin repetirlo cada semana, cambiar días concretos y registrar ausencias sin alterar el horario habitual, y consultar la semana con las horas previstas en móvil y ordenador. La baja conserva el historial y no toca las horas extra.
 
 ## Fase 6 — Dashboard y pulido responsive
 - Mostrar pedidos de hoy, pedidos pendientes, próximas entregas y resumen de horas extra. *(Pedidos de hoy y mañana con sus productos: hecho en el Bloque 5 de la Fase 3. Pendiente: resumen de horas extra en Inicio.)*

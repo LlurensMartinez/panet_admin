@@ -35,6 +35,8 @@ Antes de instalar paquetes o asumir APIs, comprueba las versiones y patrones exi
 - Los pedidos preparados y los marcados como «no se pide» se conservan en el historial.
 - Los festivos generan advertencias preventivas, no afirmaciones sobre la política real de entrega del proveedor, y nunca mueven ni cancelan pedidos automáticamente.
 - Los festivos oficiales (`source = 'official'`) los mantiene la app a partir de los datos abiertos de la Generalitat y del municipio de la tienda (`shop_settings`); nunca se tocan los manuales. Elegir el municipio no convierte la app en multitienda.
+- Horarios: el horario habitual se guarda por versiones con fecha de inicio. Las vigentes o pasadas no se modifican. Una excepción (cambio de un día o ausencia) nunca modifica el horario habitual. Las horas previstas son horas reales en Europe/Madrid, y un turno nocturno cuenta en el día en que empieza.
+- La baja de una trabajadora solo elimina planificación posterior a hoy, en una operación atómica. Nunca toca horarios vigentes o pasados ni horas extra. No se guardan motivos médicos ni datos de salud en las ausencias.
 
 ## Seguridad
 - Nunca exponer secretos ni la clave `service_role` en el cliente.

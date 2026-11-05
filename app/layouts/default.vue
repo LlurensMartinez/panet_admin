@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   // Incluye las subpáginas /pedidos/proveedores y /pedidos/festivos.
   { label: 'Pedidos', to: '/pedidos', icon: 'i-lucide-clipboard-list' },
   { label: 'Empleados', to: '/empleados', icon: 'i-lucide-users-round' },
+  { label: 'Horarios', to: '/horarios', icon: 'i-lucide-calendar-days' },
   { label: 'Horas extra', to: '/horas-extra', icon: 'i-lucide-clock' },
 ]
 
@@ -28,7 +29,7 @@ function isCurrent(item) {
     </a>
 
     <header class="sticky top-0 z-20 border-b border-default bg-default/85 backdrop-blur-md">
-      <UContainer class="flex h-16 max-w-6xl items-center gap-8">
+      <UContainer class="flex h-16 max-w-6xl items-center gap-4 lg:gap-8">
         <NuxtLink
           to="/"
           class="flex shrink-0 items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
@@ -61,14 +62,15 @@ function isCurrent(item) {
               <NuxtLink
                 :to="item.to"
                 :aria-current="isCurrent(item) ? 'page' : undefined"
-                class="relative flex items-center gap-2 px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                class="relative flex items-center gap-2 px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:px-3"
                 :class="isCurrent(item)
-                  ? 'text-highlighted after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary'
+                  ? 'text-highlighted after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary lg:after:inset-x-3'
                   : 'text-muted hover:text-highlighted'"
               >
+                <!-- En tabletas no caben los iconos de las cinco secciones. -->
                 <UIcon
                   :name="item.icon"
-                  class="size-4"
+                  class="hidden size-4 lg:block"
                   aria-hidden="true"
                 />
                 {{ item.label }}

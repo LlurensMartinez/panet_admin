@@ -44,6 +44,7 @@ No se crea una tabla de cuentas para trabajadoras.
 Decisiones:
 - **Nombre y apellidos no pueden estar vacíos** ni contener solo espacios, tabuladores o saltos de línea. Lo rechaza la base de datos además del formulario. Otros caracteres invisibles poco habituales, como el espacio de no separación, no se detectan: el formulario debe recortar los espacios antes de guardar.
 - **No se borran:** los clientes no tienen el privilegio `DELETE`. Las trabajadoras se desactivan con `is_active = false` y conservan su historial.
+- **`last_working_date date null`** (migración de horarios, 20261105100000): último día trabajado, incluido, de una trabajadora dada de baja. Restricción `last_working_date is null or is_active = false`. La fija `public.deactivate_employee()` y la quita `public.reactivate_employee()`. Las trabajadoras desactivadas antes de esta migración quedan sin fecha. Ver *Horarios del personal*.
 
 ### `overtime_entries`
 - `id uuid primary key default gen_random_uuid()`
@@ -164,29 +165,118 @@ Decisiones:
 
 `suppliers`, `orders` y `holidays` están implementadas en `supabase/migrations/20261028221500_suppliers_orders_holidays.sql`, con sus comprobaciones en `supabase/tests/orders_rls_checks.sql`.
 
-### `employee_absences`
-- `id uuid primary key`
-- `employee_id uuid not null references employees(id)`
-- `absence_type text not null`
-- `start_date date not null`
-- `end_date date not null`
-- `notes text null`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
-- Restricción: `end_date >= start_date`
+### Horarios del personal
 
-### `employee_regular_schedules`
-Propuesta mínima para horarios habituales, pendiente de confirmar los datos concretos que necesita la encargada.
-- `id uuid primary key`
-- `employee_id uuid not null references employees(id)`
-- `weekday smallint not null`
-- `start_time time null`
-- `end_time time null`
-- `notes text null`
-- `created_at timestamptz not null`
-- `updated_at timestamptz not null`
+Implementados en `supabase/migrations/20261105100000_employee_schedules.sql`, con sus comprobaciones en `supabase/tests/employee_schedules_checks.sql`. Sustituyen a la propuesta anterior de `employee_regular_schedules` (una fila por día, sin versiones), que no permitía conservar los horarios anteriores. Alcance funcional: `SPEC.md`, 3.6 y 3.9.
 
-Esta tabla representa horarios habituales, no un sistema completo de turnos publicados.
+**Formato de los turnos** (`jsonb`, validado con funciones del esquema `private`):
+- Un día: `[{"start":"07:00","end":"14:00"}, {"start":"17:00","end":"20:00"}]`. Como mucho 3 turnos; cada uno con exactamente `start` y `end` en formato `HH:MM` (de `00:00` a `23:59`); `[]` = descanso o día libre.
+- Inicio distinto de fin. Si `end` es anterior o igual a `start`, el turno acaba al día siguiente y cuenta entero en el día en que empieza.
+- Sin solapamientos dentro del día. Acabar a las 06:00 y empezar a las 06:00 no es solapamiento.
+- Una semana: `{"1": [turnos], …, "7": [turnos]}` (día ISO, 1 = lunes). Un día que falta es descanso. Un turno nocturno no puede pisar el día siguiente, incluido el domingo con el lunes (la semana se repite).
+
+#### `employee_schedules` (versiones del horario habitual)
+- `id uuid primary key default gen_random_uuid()`
+- `employee_id uuid not null references employees(id) on delete restrict`
+- `valid_from date not null`: desde cuándo rige. Rige hasta el día antes de la versión siguiente.
+- `kind text not null default 'schedule'`: `schedule` (horario semanal) o `end` (sin horario desde `valid_from`; se crea al dar de baja).
+- `week jsonb null`: obligatoria y válida si `kind = 'schedule'`; nula si `kind = 'end'`.
+- `notes text null`, `created_at`, `updated_at` (trigger `private.set_updated_at()`).
+- `unique (employee_id, valid_from)`.
+
+Decisiones:
+- **Sin solapes por diseño:** una versión acaba siempre el día antes de la siguiente.
+- **Huecos permitidos:** antes de la primera versión no hay horario (incorporación futura o sin horario registrado); después de una versión `end`, tampoco.
+- **Solo se añaden al final:** la nueva versión debe ser posterior a la última (trigger, `PS001`). Como pronto, el lunes de la semana actual (`PS002`), salvo la primera versión de cada trabajadora, que puede tener cualquier fecha para la carga inicial.
+- **Historial inmutable:** las versiones vigentes o pasadas no se pueden editar ni borrar (RLS: solo `valid_from > hoy`). De las futuras solo se pueden editar `week` y `notes`.
+- **Límite entre versiones:** el primer día de una versión no puede chocar con un turno nocturno del día anterior; al editar una versión futura que tiene otra detrás, su último día tampoco puede chocar con la siguiente (`PS003`).
+
+#### `employee_day_overrides` (cambios de un día)
+- `id`, `employee_id` (`on delete restrict`), `work_date date not null`
+- `shifts jsonb not null default '[]'`: turnos de ese día; `[]` = día libre.
+- `notes`, `created_at`, `updated_at`.
+- `unique (employee_id, work_date)`.
+
+Decisiones:
+- **Nunca modifican el horario habitual:** no hay claves, cascadas ni triggers que escriban en `employee_schedules`. Borrar el cambio devuelve el día al horario habitual.
+- **Solapamientos con los días vecinos:** se comprueban con lo que rige el día anterior (un turno nocturno que llega a este día) y el siguiente (`PS003`).
+- **Horas que no existen** el día del cambio al horario de verano: se rechazan (`PS004`), también cuando es el fin de un turno nocturno.
+- `employee_id` y `work_date` no se pueden modificar.
+
+#### `employee_absences` (vacaciones, permisos y otras ausencias)
+- `id`, `employee_id` (`on delete restrict`)
+- `absence_type text not null`: `vacation` (Vacaciones), `leave` (Permiso) u `other` (Otro). Sin tipos médicos.
+- `start_date date not null`, `end_date date not null` (ambas incluidas), con `check (end_date >= start_date)`.
+- `notes`, `created_at`, `updated_at`. Las observaciones no deben contener motivos médicos ni datos de salud (lo avisa el formulario).
+- Índice `(employee_id, start_date)`.
+
+Decisiones:
+- **No se solapan** las ausencias de una misma trabajadora (trigger con bloqueo de la fila de la trabajadora, `PS005`). Se eligió un trigger en lugar de una restricción de exclusión para no activar la extensión `btree_gist`.
+- `employee_id` no se puede modificar.
+
+#### Prioridad de cada día
+La base de datos (`private.planned_shifts`, para validar) y la app (para mostrar) aplican la misma regla:
+1. Fecha posterior a `employees.last_working_date` → sin turnos (baja).
+2. Versión vigente de tipo `end` → sin turnos (periodo de baja anterior). Los cambios y ausencias de esas fechas se ignoran.
+3. Ausencia que cubre la fecha → sin turnos.
+4. Cambio de ese día → sus turnos.
+5. Versión vigente de tipo `schedule` → turnos de ese día de la semana.
+6. Sin versión → sin horario.
+
+**Qué impide la base de datos y qué avisa la app.** La base de datos rechaza los solapamientos directos: dentro de un día, entre días de una semana, en el límite entre versiones y entre un cambio de un día y sus días vecinos. Un conflicto que aparece por un cambio hecho en otro sitio (por ejemplo, borrar una ausencia que ocultaba un cambio) no se rechaza: la app lo marca como «Turnos solapados» para que se corrija.
+
+#### Baja y reactivación
+- **`public.deactivate_employee(p_employee_id uuid, p_last_working_date date) returns jsonb`**, en una sola transacción:
+  1. Comprueba que el último día no es posterior a hoy y que no hay un horario que ya haya empezado después de esa fecha (`PS007`).
+  2. Elimina solo la planificación **posterior a hoy**: versiones, cambios de un día y ausencias que empiezan después de hoy. Acorta hasta hoy las ausencias en curso.
+  3. Crea una versión `end` desde el día siguiente al último día (si tenía horario).
+  4. Pone `is_active = false` y `last_working_date`.
+
+  Devuelve `{last_working_date, deleted_schedules, deleted_day_changes, deleted_absences, shortened_absences, closed_schedule}`.
+
+  Nunca elimina ni modifica versiones vigentes o pasadas ni horas extra. Si el último día es anterior a hoy, los cambios y ausencias entre ese día y hoy se conservan (no son futuros), pero no se muestran porque caen después de la baja. La app enseña antes lo que se eliminará con las mismas condiciones.
+- **`public.reactivate_employee(p_employee_id uuid, p_return_date date, p_copy_schedule boolean default true) returns jsonb`**, en una sola transacción:
+  1. La fecha de vuelta debe ser posterior al último día (`PS007`).
+  2. Pone `is_active = true` y quita `last_working_date`.
+  3. Si la vuelta coincide con el día de cierre del horario y ese cierre todavía no ha empezado, quita el cierre y sigue el horario anterior (deshacer una baja del mismo día).
+  4. Si no, y se pide, copia el último horario semanal desde la fecha de vuelta (con las reglas de fecha mínima y solapamientos).
+
+  Devuelve `{return_date, restored_previous_schedule, copied_schedule}`.
+- Las dos son `SECURITY INVOKER` (RLS y triggers se siguen aplicando), con `search_path` vacío, `EXECUTE` solo para `authenticated`, y comprueban `private.is_authorized()`. Son las primeras funciones del proyecto que la app llama con `supabase.rpc`.
+- **Protección sin las funciones** (trigger en `employees`): con fecha de baja no puede quedar planificación posterior a hoy ni un horario vigente después de la baja (`PS009`); la fecha no puede ser posterior a hoy (`PS007`) ni cambiarse sin reactivar antes (`PS008`). Una trabajadora con planificación no se puede desactivar sin fecha (`PS009`). Las trabajadoras sin planificación se siguen desactivando y activando como antes.
+- **Planificación de una trabajadora desactivada:** no se puede crear, modificar ni borrar (`PS006`). Su historial queda de solo lectura.
+- **En la app** (`app/utils/employee-leave.js` y `useEmployeeLeave`):
+  - con planificación, la baja y la reactivación usan estas funciones;
+  - sin planificación, una sola actualización de `employees` (`is_active` y `last_working_date`), como antes;
+  - la vista previa de la baja aplica las mismas condiciones que `deactivate_employee`.
+
+  `EMPLOYEE_COLUMNS` no incluye `last_working_date`: la fecha se lee solo al reactivar. Así, el listado de empleados y la pantalla de horas extra funcionan igual aunque la migración no esté aplicada.
+
+#### Errores de reglas de negocio
+Las funciones y triggers usan SQLSTATE propios, con un mensaje en castellano y la fecha relevante en `detail` (`AAAA-MM-DD`). La app muestra su propio texto según el código, nunca el mensaje técnico.
+
+| Código | Significado |
+| --- | --- |
+| `PS001` | La nueva versión no es posterior a la última registrada. |
+| `PS002` | La nueva versión empieza antes del lunes de la semana actual. |
+| `PS003` | Un turno se solapa con un turno nocturno del día anterior o con el día siguiente. |
+| `PS004` | Una hora no existe ese día por el cambio al horario de verano. |
+| `PS005` | La ausencia se solapa con otra de la misma trabajadora. |
+| `PS006` | La trabajadora está desactivada o la fecha cae en un periodo de baja. |
+| `PS007` | Fecha de baja o de vuelta no válida. |
+| `PS008` | Ya está dada de baja / ya está activa / la fecha de baja no se cambia sin reactivar. |
+| `PS009` | La baja dejaría planificación posterior o no tiene fecha. |
+| `PS010` | Cierre de horario no válido o que no se puede quitar. |
+
+Errores habituales además de estos: `23514` (formato de turnos o datos no válidos), `23505` (versión o cambio duplicado), `42501` (sin permiso), `P0002` (la trabajadora no existe) y `22004` (faltan datos en la llamada).
+
+#### Cálculo de horas (app)
+- Se convierte cada inicio y fin (fecha + hora local de Madrid) a un instante UTC y se restan: son **horas reales**. Un 22:00-06:00 dura 8 h; 7 h la noche del último domingo de marzo y 9 h la del último domingo de octubre.
+- **Hora inexistente** (de 02:00 a 02:59 el último domingo de marzo): no se corrige. La app muestra un error y pide modificar el turno. En un cambio de un día la base de datos también la rechaza (`PS004`). En el horario habitual no se puede rechazar al guardar (la semana se repite), así que la app marca ese día concreto con el error y propone cambiar el turno de ese día.
+- **Hora repetida** (de 02:00 a 02:59 el último domingo de octubre): se toma su **primera aparición, en horario de verano (UTC+2)**, tanto en el inicio como en el fin. Así 01:00-03:00 dura 3 h, 02:30-06:00 dura 4 h 30 min y 02:15-02:45, 30 min. Es un criterio fijo y documentado; la base de datos no calcula duraciones.
+- Totales por día (turnos que empiezan ese día), por semana (lunes-domingo), por trabajadora y de toda la plantilla.
+- **Comparación preparada:** `buildPlannedVsOvertime` (`app/utils/schedules.js`) devuelve, por trabajadora y periodo, los minutos previstos y los de `overtime_entries` (por `work_date`). Todavía no se muestra y no cambia nada de horas extra.
+- Toda esta lógica está en `app/utils/schedules.js` (sin dependencias de Nuxt ni de Supabase), con pruebas en `tests/unit/schedules.test.js`.
 
 ## Seguridad (RLS)
 
@@ -227,6 +317,16 @@ Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar auten
 | `holidays` | ninguno | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
 | `supplier_products` | ninguno | `SELECT`, `INSERT`; `UPDATE` solo de `name`, `unit`, `usual_quantity` e `is_active` (Bloque 4) |
 
+### Permisos de las tablas de horarios (Fase 5)
+
+| Tabla | `anon` | `authenticated` (si `private.is_authorized()`) |
+| --- | --- | --- |
+| `employee_schedules` | ninguno | `SELECT`, `INSERT`; `UPDATE` solo de `week` y `notes` y `DELETE`, ambos solo de versiones futuras (`valid_from` posterior a hoy en Madrid) |
+| `employee_day_overrides` | ninguno | `SELECT`, `INSERT`, `DELETE`; `UPDATE` solo de `shifts` y `notes` |
+| `employee_absences` | ninguno | `SELECT`, `INSERT`, `DELETE`; `UPDATE` solo de `absence_type`, `start_date`, `end_date` y `notes` |
+| `employees` | sin cambios | sin cambios (la columna nueva `last_working_date` entra en el `UPDATE` de la tabla) |
+| `public.deactivate_employee`, `public.reactivate_employee` | sin `EXECUTE` | `EXECUTE` |
+
 Ninguno de los dos roles tiene `TRUNCATE`, `REFERENCES` ni `TRIGGER`. Una cuenta autenticada pero no autorizada tiene los privilegios de tabla, pero las políticas no le dejan ver ni crear filas. Sus `UPDATE` y `DELETE` no afectan a ninguna fila (la API responde `200` con una lista vacía).
 
 ### Regla para cada tabla de negocio
@@ -262,6 +362,7 @@ Si la tabla usa `updated_at`, se añade también el trigger con `private.set_upd
 - `staff_rls_checks.sql`: `employees` y `overtime_entries` (Fase 2).
 - `orders_rls_checks.sql`: `suppliers`, `orders` y `holidays` (Fase 3).
 - `supplier_products_rls_checks.sql`: `supplier_products` (Fase 3, Bloque 4).
+- `employee_schedules_checks.sql`: horarios, cambios de un día, ausencias, baja y reactivación (Fase 5).
 - Las fases siguientes añaden su propio archivo.
 
 Cada script comprueba la configuración (RLS, políticas, privilegios, restricciones) y simula peticiones sin sesión, con una sesión no autorizada y con la cuenta autorizada. Si necesita datos, los crea y los deshace al terminar. No deja cambios en la base de datos. Los UUID reales se escriben solo en la copia que se pega en el SQL Editor, nunca en el archivo versionado.
@@ -275,11 +376,12 @@ Nunca se crean políticas `using (true)` ni políticas basadas solo en `auth.rol
 - `orders(delivery_date)`: historial. Creado en la migración de la Fase 3 (`orders_delivery_date_idx`).
 - `orders(supplier_id, delivery_date)`: lo cubre la restricción única `orders_supplier_delivery_unique`.
 - `supplier_products(supplier_id, …)`: lo cubre el índice único `supplier_products_name_unique_idx`.
-- `employee_absences(employee_id, start_date, end_date)`
+- `employee_absences(employee_id, start_date)`: creado en la migración de horarios (`employee_absences_employee_id_start_date_idx`).
+- `employee_schedules(employee_id, valid_from)` y `employee_day_overrides(employee_id, work_date)`: los cubren sus restricciones únicas.
 
 ## Decisiones pendientes antes de migrar
 
-1. Confirmar cómo se representará el horario habitual: uno o varios intervalos por día.
+1. ~~Confirmar cómo se representará el horario habitual: uno o varios intervalos por día.~~ **Decidido:** hasta 3 turnos por día, en versiones con fecha de inicio (ver *Horarios del personal*).
 2. ~~Confirmar si se pueden registrar dos pedidos del mismo proveedor en una fecha.~~ **Decidido:** como mucho uno por proveedor y fecha de entrega.
 3. ~~Elegir la forma de restringir RLS al usuario autorizado.~~ **Decidido:** opción A, tabla `profiles` y función `private.is_authorized()` (ver *Modelo de autorización*).
 4. ~~Decidir si los proveedores se desactivan siempre o si se permite borrarlos.~~ **Decidido:** los proveedores solo se desactivan; se pueden eliminar los pedidos pendientes y los festivos. (Fase 2: las trabajadoras solo se desactivan y los registros de horas extra sí se pueden eliminar.)

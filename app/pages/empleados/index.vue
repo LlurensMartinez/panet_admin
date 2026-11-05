@@ -16,6 +16,7 @@ const {
   createEmployee,
   updateEmployee,
   setEmployeeActive,
+  replaceEmployee,
 } = useEmployees()
 
 // ------------------------------------------------------------------ Listado
@@ -172,60 +173,33 @@ function onSaved(employee) {
 }
 
 // ------------------------------------------------- Activar y desactivar
-const pendingIds = ref([])
-const confirmOpen = ref(false)
-const employeeToDeactivate = ref(null)
-
-function onToggleActive(employee) {
-  if (employee.is_active) {
-    employeeToDeactivate.value = employee
-    confirmOpen.value = true
-    return
-  }
-  changeActive(employee, true)
-}
-
-async function changeActive(employee, isActive) {
-  if (pendingIds.value.includes(employee.id)) return
-  pendingIds.value = [...pendingIds.value, employee.id]
-
-  try {
-    const result = await setEmployeeActive(employee.id, isActive)
-    const name = getEmployeeFullName(employee)
-
-    if (!result.ok) {
-      showError(result)
-      return false
+// La lógica (baja con fecha, vista previa y reactivación) está en
+// useEmployeeStatusFlow, compartida con la ficha de cada empleada.
+const statusFlow = useEmployeeStatusFlow({
+  setEmployeeActive,
+  replaceEmployee,
+  refresh,
+  showError,
+  onChanged(employee, isActive) {
+    if (isActive) {
+      highlight(employee.id)
+      return
     }
-
-    if (isActive) highlight(employee.id)
-    toast.add({
-      title: isActive ? `Se ha activado a ${name}` : `Se ha desactivado a ${name}`,
-      description: isActive ? undefined : 'Su ficha y su historial se conservan en «Inactivos».',
-      color: 'success',
-      icon: isActive ? 'i-lucide-circle-play' : 'i-lucide-circle-pause',
-    })
-    return true
-  }
-  finally {
-    pendingIds.value = pendingIds.value.filter(id => id !== employee.id)
-  }
-}
-
-async function confirmDeactivate() {
-  const employee = employeeToDeactivate.value
-  if (!employee) return
-  const done = await changeActive(employee, false)
-  if (done) {
-    confirmOpen.value = false
     // La fila puede desaparecer del filtro actual: el foco vuelve al listado.
     nextTick(() => listRegion.value?.focus())
-  }
-}
-
-const deactivatePending = computed(() =>
-  Boolean(employeeToDeactivate.value && pendingIds.value.includes(employeeToDeactivate.value.id)),
-)
+  },
+})
+const {
+  pendingIds,
+  confirmOpen,
+  employeeToDeactivate,
+  deactivateContext,
+  deactivatePending,
+  reactivateOpen,
+  employeeToReactivate,
+  reactivateContext,
+  reactivatePending,
+} = statusFlow
 </script>
 
 <template>
@@ -330,7 +304,7 @@ const deactivatePending = computed(() =>
         :pending-ids="pendingIds"
         :highlighted-id="highlightedId"
         @edit="openEdit"
-        @toggle-active="onToggleActive"
+        @toggle-active="statusFlow.toggleActive"
       >
         <template #empty>
           <EmptyState
@@ -404,7 +378,17 @@ const deactivatePending = computed(() =>
       v-model:open="confirmOpen"
       :employee="employeeToDeactivate"
       :pending="deactivatePending"
-      @confirm="confirmDeactivate"
+      :context="deactivateContext"
+      @confirm="statusFlow.confirmDeactivate"
+      @retry="statusFlow.loadDeactivateContext(employeeToDeactivate)"
+    />
+
+    <EmployeeReactivateModal
+      v-model:open="reactivateOpen"
+      :employee="employeeToReactivate"
+      :pending="reactivatePending"
+      :context="reactivateContext"
+      @confirm="statusFlow.confirmReactivate"
     />
   </div>
 </template>

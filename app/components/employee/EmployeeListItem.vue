@@ -1,7 +1,7 @@
 <script setup>
 // Una fila del listado. En escritorio, columnas alineadas con la cabecera
 // de EmployeeList; en móvil, nombre y puesto apilados y las acciones en un
-// menú.
+// menú. El nombre enlaza con la ficha de la empleada (/empleados/[id]).
 const props = defineProps({
   employee: { type: Object, required: true },
   pending: { type: Boolean, default: false },
@@ -41,7 +41,19 @@ const menuItems = computed(() => [[
           class="truncate font-semibold"
           :class="employee.is_active ? 'text-highlighted' : 'text-toned'"
         >
-          {{ fullName }}
+          <NuxtLink
+            :to="`/empleados/${employee.id}`"
+            :aria-label="`${fullName}: ver ficha`"
+            class="group inline-flex max-w-full items-center gap-1 rounded-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            data-employee-link
+          >
+            <span class="truncate group-hover:underline group-hover:underline-offset-4">{{ fullName }}</span>
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-4 shrink-0 text-dimmed group-hover:text-primary"
+              aria-hidden="true"
+            />
+          </NuxtLink>
         </p>
         <p class="truncate text-sm text-muted md:hidden">
           <span v-if="employee.role">{{ employee.role }}</span>

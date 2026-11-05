@@ -102,6 +102,11 @@ export function useEmployees() {
     return applyResult(response, 'status')
   }
 
+  /** Sustituye una ficha de la lista (por ejemplo, tras una baja con fecha). */
+  function replaceEmployee(employee) {
+    if (employee) employees.value = upsertEmployee(employees.value, employee)
+  }
+
   return {
     employees,
     status,
@@ -110,6 +115,7 @@ export function useEmployees() {
     createEmployee,
     updateEmployee,
     setEmployeeActive,
+    replaceEmployee,
   }
 }
 

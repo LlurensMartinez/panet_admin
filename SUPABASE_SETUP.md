@@ -983,6 +983,65 @@ Si da un error, la transacción se deshace entera y no cambia nada.
 
 El script deshace todo lo que prueba: la configuración y los festivos quedan como estaban (la última fila lo comprueba).
 
+## 14. Fase 5, Bloque 1: horarios del personal
+
+### 14.1 Qué hace la migración
+
+Archivo: `supabase/migrations/20261105100000_employee_schedules.sql`. **Solo añade objetos: no borra ni cambia datos.** No toca `overtime_entries` ni las tablas de pedidos, proveedores o festivos.
+
+- **Columna `employees.last_working_date`**: último día trabajado de una trabajadora dada de baja. Las trabajadoras existentes quedan sin fecha.
+- **Tablas nuevas**, con RLS (solo la cuenta autorizada; `anon` sin privilegios):
+  - `employee_schedules`: versiones del horario habitual. Solo las futuras se pueden editar o borrar.
+  - `employee_day_overrides`: cambios de un día.
+  - `employee_absences`: vacaciones, permisos y otras ausencias, sin datos de salud.
+- **Triggers** que hacen cumplir las reglas:
+  - turnos nocturnos que pisan el día siguiente;
+  - ausencias solapadas;
+  - versiones solo al final;
+  - nada planificado después de una baja.
+- **Funciones `public.deactivate_employee` y `public.reactivate_employee`**: baja y reactivación con fecha, cada una en una sola transacción.
+  - Se ejecutan con los permisos de quien llama, así que RLS sigue aplicándose.
+  - Solo `authenticated` puede ejecutarlas, y comprueban `private.is_authorized()`.
+  - La baja solo elimina planificación posterior a hoy; nunca toca horarios vigentes o pasados ni horas extra.
+- Funciones internas en `private` (fecha de hoy en Madrid, validación de turnos, horas que no existen por el cambio de hora). No se exponen en la Data API.
+
+Detalle del modelo y de los códigos de error `PS001`…`PS010`: `DATA_MODEL.md`, *Horarios del personal*.
+
+**Compatibilidad con la app:**
+- Mientras la migración no esté aplicada, la app desactiva y activa trabajadoras como antes, sin pedir fecha.
+- Con la migración aplicada, la baja pide el último día de trabajo. Si la trabajadora tiene planificación, la baja y la reactivación usan las funciones de esta migración (Fase 5, Bloque 3).
+
+### 14.2 Antes de empezar
+
+Selector **Role** en **`postgres`**. Comprobación previa:
+
+```sql
+select to_regclass('public.employee_schedules') as tabla_horarios,
+       to_regclass('public.employees') as tabla_employees,
+       to_regprocedure('private.is_authorized()') as funcion_autorizacion;
+```
+
+- **`tabla_horarios` vacía y las otras dos con valor:** se puede aplicar.
+- **`tabla_horarios` con valor:** ya está aplicada. No la apliques otra vez.
+
+### 14.3 Aplicar la migración (SQL Editor)
+
+1. **SQL Editor → New query**, selector **Role** en `postgres`.
+2. Escribe `begin;` en la primera línea, pega debajo el contenido completo de `20261105100000_employee_schedules.sql` y escribe `commit;` en la última.
+3. Ejecuta una sola vez. Lo esperado es «Success. No rows returned».
+
+Si da un error, la transacción se deshace entera y no cambia nada.
+
+### 14.4 Comprobaciones SQL
+
+1. Abre `supabase/tests/employee_schedules_checks.sql` y sustituye en CONFIGURACIÓN el UUID de la cuenta autorizada (y, si quieres, el de la segunda cuenta). No guardes los UUID reales en Git.
+2. Pégalo entero en una consulta nueva (selector **Role** en `postgres`) y ejecútalo.
+3. **Resultado esperado:** 147 filas: 145 que empiezan por `OK` y 2 `INFO` (trabajadoras con fecha de baja, y número de versiones, cambios y ausencias).
+
+El script crea trabajadoras de prueba y deshace todo al terminar: las trabajadoras, horarios y horas extra reales quedan como estaban (la última fila lo comprueba). Las fechas son relativas a hoy, así que vale cualquier día.
+
+Después, vuelve a ejecutar `staff_rls_checks.sql` (sección 9.4): debe seguir dando 66 `OK` + 1 `INFO`.
+
 ## Limitaciones conocidas
 
 - La cookie de sesión dura 8 horas desde la última renovación (valor por defecto del módulo). Si la app no se usa durante más tiempo, habrá que volver a iniciar sesión.
@@ -994,6 +1053,18 @@ El script deshace todo lo que prueba: la configuración y los festivos quedan co
   - **Fase 1:** la migración y `authorization_checks.sql` se han ejecutado también en el proyecto remoto (31 filas correctas). Falta confirmar la sección 7.2.
   - **Fase 2:** la migración está aplicada en el proyecto remoto según confirmación de la usuaria. Falta confirmar que `staff_rls_checks.sql` se ha ejecutado allí con 66 `OK` + 1 `INFO`: hasta entonces, su seguridad no se puede dar por validada en el proyecto real (sección 9.4).
   - **Fase 3:** la migración y `orders_rls_checks.sql` se han probado solo en local (117 filas: 116 `OK` + 1 `INFO`), también con la columna `name` en configuración regional `C`, también a través de PostgREST 13 con tokens de prueba. Se ha comprobado además que el script detecta con `FALLO` nueve versiones de la migración con errores introducidos a propósito (privilegios de `anon`, borrado de pedidos sin condición de estado, `UPDATE` de todas las columnas, falta del trigger de `prepared_at`, de un único, de RLS, del índice de nombre o del rango de días, y una política abierta) y el índice de nombre anterior, que distinguía acentos. Después se aplicaron en el proyecto remoto (secciones 10.2 y 10.4) con resultado correcto, según confirmación de la usuaria.
+  - **Fase 5, Bloque 1:** la migración de horarios y `employee_schedules_checks.sql` (145 `OK` + 2 `INFO`) se han probado solo en local.
+    - El script detecta con `FALLO` doce versiones de la migración con errores introducidos a propósito:
+      - `anon` con lectura;
+      - edición o borrado de versiones sin la condición de fecha;
+      - `UPDATE` de todas las columnas;
+      - sin el trigger de versiones, sin el de cambios de un día, o sin los de ausencias y `employees`;
+      - baja como `SECURITY DEFINER`;
+      - política abierta y RLS desactivado;
+      - semana sin la comprobación domingo-lunes;
+      - una baja que borra cambios pasados.
+    - Con la migración aplicada, los demás scripts siguen dando el resultado esperado. La función de baja también se ha llamado a través de PostgREST 13.
+    - **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 7:** la migración de `shop_settings` y `shop_settings_checks.sql` (33 `OK` + 2 `INFO`) se han probado solo en local. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 6:** la migración del calendario, `supplier_schedule_checks.sql` (30 filas `OK`) y el script de carga de la hoja se han probado solo en local (PostgreSQL 16 y PostgREST 13). Con la migración aplicada, `orders_rls_checks.sql` y `supplier_products_rls_checks.sql` siguen dando el resultado esperado. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 4:** la migración de productos y `supplier_products_rls_checks.sql` se han probado solo en local (57 filas: 56 `OK` + 1 `INFO`). El script detecta con `FALLO` ocho versiones de la migración con errores introducidos a propósito (privilegios de `anon`, `DELETE` concedido, `UPDATE` de todas las columnas, índice no único o sin proveedor, cantidad sin rango, política abierta y RLS desactivado). **No** se han ejecutado en el proyecto remoto: su seguridad solo se puede dar por validada después de las secciones 11.2 y 11.4.
