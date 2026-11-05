@@ -83,6 +83,11 @@ const SHIFT_MESSAGES = {
   [SHIFT_ERROR.OVERLAP]: 'Hay turnos que se solapan.',
 }
 
+/** Mensaje de un error de validateDayShifts (también lo usa el editor del horario habitual). */
+export function getShiftValidationMessage(code) {
+  return SHIFT_MESSAGES[code] ?? SHIFT_MESSAGES[SHIFT_ERROR.INVALID_TIME]
+}
+
 /**
  * Comprueba un cambio de un día antes de guardarlo.
  *
