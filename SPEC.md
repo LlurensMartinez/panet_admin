@@ -204,7 +204,15 @@ Sustituye al alcance inicial de la opción A («no construir un planificador ava
 **Integración:**
 - Las trabajadoras inactivas no aparecen en la planificación posterior a su baja (ver 3.6).
 - Los festivos solo se marcan en el calendario a modo informativo: no cambian las horas previstas.
-- Las horas extra no cambian. Queda preparada (sin mostrarse todavía) la comparación entre horas previstas y horas extra registradas; las horas extra se siguen introduciendo a mano (3.7).
+- Las horas extra no cambian: se siguen introduciendo a mano (3.7).
+
+**Resumen de horas planificadas** (`/horarios?vista=resumen`, pestaña «Resumen de horas» junto al calendario; misma navegación entre semanas):
+- Por trabajadora: horas planificadas de la semana y reparto de los días (con turnos, descanso, libre, ausencia, baja, cambios de un día), con enlace a su ficha.
+- Total planificado de la tienda y cuántas trabajadoras tienen planificación.
+- «Sin planificación» (sin horario ni cambios esa semana) se distingue de una planificación de **0 h** (por ejemplo, ausente toda la semana).
+- Al lado, aparte, las **horas extra registradas** de cada trabajadora con fecha de esa semana (y su total). Nunca se suman a las planificadas, no cambian el horario y se avisa de que no indican las horas trabajadas de verdad. Una trabajadora con horas extra pero sin planificación también aparece.
+- Si fallan las horas extra, se avisa y se puede reintentar; las planificadas siguen visibles.
+- Solo consulta: no modifica horarios, excepciones, ausencias ni horas extra. Sin nóminas, compensaciones ni fichajes.
 
 ## 4. Experiencia de uso
 

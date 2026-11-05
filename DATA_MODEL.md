@@ -275,8 +275,12 @@ Errores habituales además de estos: `23514` (formato de turnos o datos no váli
 - **Hora inexistente** (de 02:00 a 02:59 el último domingo de marzo): no se corrige. La app muestra un error y pide modificar el turno. En un cambio de un día la base de datos también la rechaza (`PS004`). En el horario habitual no se puede rechazar al guardar (la semana se repite), así que la app marca ese día concreto con el error y propone cambiar el turno de ese día.
 - **Hora repetida** (de 02:00 a 02:59 el último domingo de octubre): se toma su **primera aparición, en horario de verano (UTC+2)**, tanto en el inicio como en el fin. Así 01:00-03:00 dura 3 h, 02:30-06:00 dura 4 h 30 min y 02:15-02:45, 30 min. Es un criterio fijo y documentado; la base de datos no calcula duraciones.
 - Totales por día (turnos que empiezan ese día), por semana (lunes-domingo), por trabajadora y de toda la plantilla.
-- **Comparación preparada:** `buildPlannedVsOvertime` (`app/utils/schedules.js`) devuelve, por trabajadora y periodo, los minutos previstos y los de `overtime_entries` (por `work_date`). Todavía no se muestra y no cambia nada de horas extra.
+- **Comparación con horas extra:** `buildPlannedVsOvertime` (`app/utils/schedules.js`) devuelve, por trabajadora y periodo, los minutos previstos y los de `overtime_entries` (por `work_date`). Se muestra en el resumen de horas de `/horarios` (lectura de `id, employee_id, work_date, duration_minutes` de la semana) y no cambia nada de horas extra.
 - Toda esta lógica está en `app/utils/schedules.js` (sin dependencias de Nuxt ni de Supabase), con pruebas en `tests/unit/schedules.test.js`.
+- **Excepciones en la app** (`app/utils/schedule-exceptions.js`):
+  - antes de guardar un cambio de un día o una ausencia se aplican las mismas comprobaciones que los triggers (turnos, días vecinos, cambios de hora, solapes de ausencias y periodos laborales);
+  - con una ausencia ese día, la app no deja editar sus turnos: la ausencia prevalece;
+  - los cambios se guardan con `insert` o con `update` por `id` (no con `upsert`, que intentaría modificar `employee_id` y `work_date`, columnas que no se pueden actualizar).
 
 ## Seguridad (RLS)
 

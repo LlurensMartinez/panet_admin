@@ -190,14 +190,43 @@ Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, cale
   - `app/pages/horarios.vue`;
   - `app/components/schedule/` (`ScheduleWeekNav`, `ScheduleWeekGrid`, `ScheduleDayList` y `ScheduleDayCell`).
 
-**Bloque 6 — Excepciones**
-- Cambiar un día desde el calendario, marcarlo libre o volver al horario habitual.
-- Vacaciones, permisos y otras ausencias desde la ficha y el calendario.
-- Diferencia visual entre turnos habituales y excepciones, y avisos de «Turnos solapados».
+**Bloque 6 — Excepciones** (desde `/horarios`) *(hecho en local)*
+- Cada día de cada empleada del calendario (cuadrícula y vista diaria) abre un diálogo con dos pestañas.
+- **Turnos de este día:**
+  - otros turnos (como mucho 3) o «Libre», solo para esa fecha;
+  - «Volver al horario habitual» quita el cambio;
+  - con una ausencia ese día, se avisa de que la ausencia prevalece y no se editan los turnos.
+- **Ausencias** de la empleada: lista, alta, edición y eliminación (con confirmación).
+  - Tipos: Vacaciones, Permiso y Otro, con aviso de no escribir datos de salud.
+  - Se avisa de los cambios de un día que quedarán sin efecto.
+- **Validaciones antes de guardar** (`app/utils/schedule-exceptions.js`, con las funciones de `schedules.js`):
+  - máximo de turnos, formato y solapes en el día y con los días vecinos (turnos nocturnos);
+  - horas que no existen por el cambio de hora;
+  - fechas y solapes de ausencias;
+  - periodos laborales: nada con la empleada de baja, después de su último día ni en un periodo de baja anterior.
 
-**Bloque 7 — Resumen de horas previstas y repaso final**
-- Totales por día, semana, trabajadora y plantilla.
-- Repaso de la documentación.
+  La base de datos repite las comprobaciones, y sus errores (`PS003`-`PS006`) se muestran con mensajes propios.
+- **Al guardar o eliminar**, el calendario se recarga y los totales se actualizan. Si falla, el diálogo sigue abierto con el aviso y se puede reintentar. Cada operación es una sola sentencia.
+- Nunca se escribe en `employee_schedules`: el horario habitual y su historial no cambian. Horas extra sin cambios. Sin migraciones nuevas.
+- Archivos:
+  - `app/utils/schedule-exceptions.js`, con pruebas en `tests/unit/schedule-exceptions.test.js`;
+  - `app/composables/useScheduleExceptions.js`;
+  - `ScheduleDayDialog.vue`, `ScheduleDayShiftsForm.vue` y `ScheduleAbsenceManager.vue`;
+  - celdas que se pueden pulsar en `ScheduleWeekGrid.vue` y `ScheduleDayList.vue`.
+
+**Bloque 7 — Resumen de horas planificadas** *(hecho en local)*
+- Pestaña «Resumen de horas» en `/horarios` (`?vista=resumen`; la navegación de semanas conserva la vista). No duplica la página: sustituye a la cuadrícula.
+- Por empleada: horas planificadas, reparto de los días, avisos si hay conflictos o errores, enlace a la ficha y horas extra registradas de la semana, aparte. Total de la tienda y «Con planificación N de M».
+- «Sin planificación» frente a 0 h planificadas.
+- Escritorio: tabla con fila «Total tienda»; móvil: lista sin desplazamiento horizontal.
+- Cálculo con `buildWeekPlan` y `buildPlannedVsOvertime` (`schedules.js`), sin duplicar reglas. Las horas extra se cargan solo en esta vista (`useWeekOvertime`, `work_date` de lunes a domingo); su error no oculta las horas planificadas.
+- Solo lectura. Sin cambios en horas extra, horarios, excepciones ni ausencias. Sin migraciones.
+- Archivos:
+  - `app/utils/week-summary.js`, con pruebas en `tests/unit/week-summary.test.js`;
+  - `app/composables/useWeekOvertime.js`;
+  - `app/components/schedule/ScheduleWeekSummary.vue`;
+  - `app/pages/horarios.vue` (selector de vista).
+- Pendiente: repaso final de la documentación de la fase.
 
 Los festivos y sus avisos se trasladaron a la Fase 3.
 
