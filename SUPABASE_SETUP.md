@@ -12,6 +12,7 @@ Guía de configuración de Supabase: acceso privado y autorización (Fase 1, sec
 - Además, la cuenta debe estar en `public.profiles`. Si no lo está, solo puede ver `/acceso-denegado` (sección 7.4).
 - Botón **Cerrar sesión** en la cabecera. Cierra solo la sesión de ese dispositivo.
 - Proyecto de Supabase creado y variables configuradas en local.
+- **Decisión (5 nov 2026): este mismo proyecto es el de producción**, con sus datos tal como están (según la encargada, no hay que limpiar nada). No hay un proyecto aparte para pruebas: lo que se guarda desde la app en local queda en la base de datos real. El estado de las migraciones que figura abajo puede no estar al día.
 - **Fase 1, aplicada en el proyecto remoto:**
   - Migración `supabase/migrations/20261028095000_profiles_authorization.sql`: crea `public.profiles` (lista de cuentas autorizadas), `private.is_authorized()` y la RLS de `profiles`.
   - Cuenta de la encargada autorizada (sección 6).

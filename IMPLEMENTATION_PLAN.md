@@ -265,6 +265,7 @@ Los festivos y sus avisos se trasladaron a la Fase 3.
 **Aceptación:** las acciones habituales se completan cómodamente en móvil y ordenador.
 
 ## Fase 7 — Validación y despliegue
+- Base de datos de producción: el mismo proyecto de Supabase que se usa en local, con sus datos actuales (decisión del 5 nov 2026). Antes de publicar, confirmar las migraciones aplicadas (`SUPABASE_SETUP.md`, «Estado actual»).
 - Pruebas funcionales de todos los flujos.
 - Verificación de permisos y RLS.
 - Revisión de accesibilidad básica.
