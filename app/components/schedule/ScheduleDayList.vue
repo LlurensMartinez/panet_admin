@@ -5,7 +5,11 @@
 const props = defineProps({
   plan: { type: Object, required: true },
   headers: { type: Array, required: true },
+  // Cada día de una empleada abre la gestión de excepciones.
+  editable: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['select'])
 
 const selectedDate = defineModel('selectedDate', { type: String, default: null })
 
@@ -96,7 +100,23 @@ const title = computed(() => {
               class="block truncate font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               :class="row.employee.is_active ? 'text-highlighted' : 'text-toned'"
             >{{ row.name }}</NuxtLink>
+            <button
+              v-if="editable"
+              type="button"
+              class="-ms-1.5 block w-full rounded-md text-start transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary"
+              :aria-label="`${row.name}. ${describeDayCell(header, getDayCellView(row.days[index]))}. Cambiar este día`"
+              :data-edit-cell="`${row.employeeId}|${header.date}`"
+              @click="emit('select', { employee: row.employee, day: row.days[index], header })"
+            >
+              <ScheduleDayCell
+                :day="row.days[index]"
+                :header="header"
+                detailed
+                in-button
+              />
+            </button>
             <ScheduleDayCell
+              v-else
               :day="row.days[index]"
               :header="header"
               detailed

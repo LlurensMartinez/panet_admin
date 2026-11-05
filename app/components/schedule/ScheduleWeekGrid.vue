@@ -1,11 +1,16 @@
 <script setup>
 // Cuadrícula semanal (escritorio): una fila por empleada, los 7 días en
 // columnas y el total semanal; al pie, el total de la tienda por día y de la
-// semana. Solo lectura. Los datos llegan ya resueltos (buildWeekPlan).
+// semana. Los datos llegan ya resueltos (buildWeekPlan). Con `editable`, cada
+// celda es un botón que abre las excepciones de ese día.
 defineProps({
   plan: { type: Object, required: true },
   headers: { type: Array, required: true },
+  // Cada celda abre la gestión de excepciones de ese día.
+  editable: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['select'])
 </script>
 
 <template>
@@ -98,7 +103,22 @@ defineProps({
             class="px-1 py-1.5 align-top"
             :class="headers[index].isToday ? 'bg-primary/4' : ''"
           >
+            <button
+              v-if="editable"
+              type="button"
+              class="block w-full rounded-md text-start transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+              :aria-label="`${row.name}. ${describeDayCell(headers[index], getDayCellView(day))}. Cambiar este día`"
+              :data-edit-cell="`${row.employeeId}|${day.date}`"
+              @click="emit('select', { employee: row.employee, day, header: headers[index] })"
+            >
+              <ScheduleDayCell
+                :day="day"
+                :header="headers[index]"
+                in-button
+              />
+            </button>
             <ScheduleDayCell
+              v-else
               :day="day"
               :header="headers[index]"
             />
