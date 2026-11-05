@@ -1,7 +1,13 @@
 <script setup>
-// Calendario semanal de horarios (solo consulta): todas las empleadas con
-// actividad en la semana, sus turnos de cada día, sus horas semanales y el
-// total de la tienda. Navegación por semanas (?semana=AAAA-MM-DD).
+// Calendario semanal de horarios: todas las empleadas con actividad en la
+// semana, sus turnos de cada día, sus horas semanales y el total de la
+// tienda. Navegación por semanas (?semana=AAAA-MM-DD).
+//
+// Cada día de cada empleada abre sus excepciones (cambio de ese día o
+// ausencias). Nunca se modifica el horario habitual ni su historial.
+//
+// Vista «Resumen» (?vista=resumen): horas planificadas por empleada y de la
+// tienda, con las horas extra registradas esa semana aparte (solo lectura).
 //
 // Las reglas (versiones, bajas, ausencias, cambios de un día, horas reales en
 // Europe/Madrid, turnos nocturnos y conflictos) son las de
@@ -25,6 +31,17 @@ function changeWeek(start) {
   router.push({ query: start === getWeekStart(today) ? rest : { ...rest, [WEEK_QUERY_KEY]: start } })
 }
 
+// Vista: calendario o resumen. Se conserva al cambiar de semana.
+const view = computed(() => resolveViewParam(route.query[VIEW_QUERY_KEY]))
+function changeView(value) {
+  const { [VIEW_QUERY_KEY]: _current, ...rest } = route.query
+  router.push({ query: value === SCHEDULE_VIEW.SUMMARY ? { ...rest, [VIEW_QUERY_KEY]: value } : rest })
+}
+const VIEWS = [
+  { value: SCHEDULE_VIEW.CALENDAR, label: 'Calendario', icon: 'i-lucide-calendar-days' },
+  { value: SCHEDULE_VIEW.SUMMARY, label: 'Resumen de horas', icon: 'i-lucide-sigma' },
+]
+
 const { state, reload } = useWeekPlan(weekStart)
 // Los festivos son solo informativos: si no se pueden cargar, no se marcan.
 const { holidays } = useHolidays()
@@ -36,11 +53,38 @@ const plan = computed(() => currentData.value
   : null)
 const headers = computed(() => getDayHeaders(dates.value, { today, holidays: holidays.value }))
 
+// Resumen: horas planificadas (las mismas del calendario) y, aparte, las
+// horas extra registradas esa semana.
+const isSummary = computed(() => view.value === SCHEDULE_VIEW.SUMMARY)
+const { state: overtimeState, reload: reloadOvertime } = useWeekOvertime(weekStart, isSummary)
+const overtimeReady = computed(() => overtimeState.value.status === 'ready' && overtimeState.value.weekStart === weekStart.value)
+const summary = computed(() => {
+  if (!plan.value) return null
+  const comparison = overtimeReady.value
+    ? buildPlannedVsOvertime({
+        ...currentData.value,
+        overtimeEntries: overtimeState.value.entries,
+        from: dates.value[0],
+        to: dates.value[6],
+      })
+    : null
+  return buildWeekSummary({ plan: plan.value, comparison })
+})
+
 // Día elegido en la vista diaria: al cambiar de semana, hoy o el lunes.
 const selectedDate = ref(getDefaultSelectedDate(dates.value, today))
 watch(weekStart, () => {
   selectedDate.value = getDefaultSelectedDate(dates.value, today)
 })
+
+// ------------------------------------------------------------- Excepciones
+const dialogOpen = ref(false)
+const selection = ref(null)
+
+function openDay(value) {
+  selection.value = value
+  dialogOpen.value = true
+}
 
 function reloadPage() {
   reloadNuxtApp({ path: route.fullPath, force: true })
@@ -51,7 +95,7 @@ function reloadPage() {
   <div class="space-y-6">
     <PageHeader
       title="Horarios"
-      description="Turnos previstos de cada empleada. Los cambios de un día y las ausencias se marcan aparte del horario habitual."
+      description="Turnos previstos de cada empleada. Los cambios de un día y las ausencias se marcan aparte y no modifican el horario habitual."
     />
 
     <ScheduleWeekNav
@@ -59,6 +103,32 @@ function reloadPage() {
       :today="today"
       @change="changeWeek"
     />
+
+    <div
+      role="tablist"
+      aria-label="Vista"
+      class="inline-grid grid-cols-2 gap-1 rounded-lg bg-default p-1 shadow-xs ring ring-default"
+      data-schedule-views
+    >
+      <button
+        v-for="item in VIEWS"
+        :key="item.value"
+        type="button"
+        role="tab"
+        :aria-selected="view === item.value"
+        class="flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary lg:min-h-9"
+        :class="view === item.value ? 'bg-primary text-inverted' : 'text-muted hover:text-highlighted'"
+        :data-view="item.value"
+        @click="changeView(item.value)"
+      >
+        <UIcon
+          :name="item.icon"
+          class="size-4"
+          aria-hidden="true"
+        />
+        {{ item.label }}
+      </button>
+    </div>
 
     <!-- Migración de horarios sin aplicar -->
     <div
@@ -135,17 +205,28 @@ function reloadPage() {
       </EmptyState>
     </div>
 
+    <ScheduleWeekSummary
+      v-else-if="plan && isSummary"
+      :summary="summary"
+      :overtime="overtimeState"
+      @retry-overtime="reloadOvertime()"
+    />
+
     <template v-else-if="plan">
       <ScheduleWeekGrid
         class="hidden lg:block"
         :plan="plan"
         :headers="headers"
+        editable
+        @select="openDay"
       />
       <ScheduleDayList
         v-model:selected-date="selectedDate"
         class="lg:hidden"
         :plan="plan"
         :headers="headers"
+        editable
+        @select="openDay"
       />
 
       <ul
@@ -169,7 +250,15 @@ function reloadPage() {
         </li>
         <li>+1: acaba al día siguiente (cuenta en el día en que empieza)</li>
         <li>Horas reales, con los cambios de hora</li>
+        <li>Toca un día para cambiar sus turnos o gestionar ausencias</li>
       </ul>
     </template>
+
+    <ScheduleDayDialog
+      v-model:open="dialogOpen"
+      :selection="selection"
+      :data="currentData"
+      @changed="reload()"
+    />
   </div>
 </template>
