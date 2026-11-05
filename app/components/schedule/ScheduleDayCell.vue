@@ -11,6 +11,8 @@ const props = defineProps({
   showDuration: { type: Boolean, default: true },
   // Muestra el texto completo de los errores (vista diaria, sin espacio limitado).
   detailed: { type: Boolean, default: false },
+  // Dentro de un botón: el texto accesible lo lleva el botón.
+  inButton: { type: Boolean, default: false },
 })
 
 const view = computed(() => getDayCellView(props.day))
@@ -30,8 +32,8 @@ const TONE_CLASSES = {
   <div
     class="min-w-0 space-y-0.5 px-1.5 py-1 text-sm"
     :class="[TONE_CLASSES[view.tone], view.hasConflict ? 'ring-2 ring-amber-400 rounded-md' : '']"
-    :aria-label="description"
-    role="group"
+    :aria-label="inButton ? undefined : description"
+    :role="inButton ? undefined : 'group'"
     :data-cell-tone="view.tone"
     :data-cell-date="day.date"
   >
