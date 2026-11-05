@@ -101,8 +101,11 @@ const showOverdue = ref(false)
 const overdueSectionId = useId()
 
 const hasSchedules = computed(() => suppliers.value.some(hasScheduledDeliveries))
+// Proveedores a demanda: recordatorios informativos (HomeOnDemandReminders).
+const hasOnDemand = computed(() => getOnDemandSuppliers(suppliers.value).length > 0)
 const nothingPlanned = computed(() => !loading.value && !summaryError.value
   && !hasSchedules.value
+  && !hasOnDemand.value
   && overdueCount.value === 0
   && summary.value.today.orderCount === 0 && summary.value.tomorrow.orderCount === 0
   && summary.value.today.doneCount === 0 && summary.value.tomorrow.doneCount === 0)
@@ -301,6 +304,13 @@ function retry() {
           :products-unavailable="productsUnavailable"
         />
       </div>
+
+      <!-- Recordatorios de proveedores a demanda (informativos) -->
+      <HomeOnDemandReminders
+        v-if="!loading"
+        :suppliers="suppliers"
+        :today="today"
+      />
 
       <p class="flex items-start gap-2 text-pretty text-sm text-muted">
         <UIcon

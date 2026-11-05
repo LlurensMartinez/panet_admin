@@ -82,6 +82,8 @@ Decisión revisada: el catálogo, que había quedado fuera del MVP, se incorpora
 - Estados de carga, error con «Reintentar» (pedidos o proveedores), avisos parciales (productos o festivos) y vacíos. Diseño para móvil (320 px en adelante), tableta y ordenador.
 - Verificado con pruebas unitarias y de extremo a extremo en local (PostgREST 13 + PostgreSQL 16 con las migraciones reales). **Pendiente:** probarlo contra el proyecto de Supabase real; requiere la migración de productos del Bloque 4 (sin ella, Inicio muestra los pedidos con un aviso de que faltan los productos).
 
+- Recordatorios en Inicio para los proveedores a demanda (`app/utils/reminders.js`, `HomeOnDemandReminders`), ocultables hasta el día siguiente con almacenamiento local. Sin cambios en la agenda ni en Supabase. *(Hecho en local, con pruebas unitarias y de extremo a extremo.)*
+
 **Bloque 6 — Calendario de proveedores y carga de la hoja** *(hecho en local; migración pendiente de aplicar)*
 A partir de la hoja «Proveïdors Panet L'Ametlla» (12/06/2026), que tenía casos que la app no cubría.
 - Migración `supabase/migrations/20261104130000_supplier_schedule_rules.sql` (solo añade columnas a `suppliers`; no borra ni cambia datos; RLS y permisos sin cambios): antelación distinta según el día, entregas cada 2 semanas, proveedores a demanda y hora límite del pedido. Comprobaciones en `supabase/tests/supplier_schedule_checks.sql` (30 filas `OK`) y guía en `SUPABASE_SETUP.md`, sección 12. *(Validada en un PostgreSQL 16 local, con PostgREST 13. **Pendiente:** aplicarla en el proyecto de Supabase real.)*
