@@ -3,9 +3,11 @@
 // último día de trabajo) y su horario habitual (vigente hoy, o el último
 // aplicable si está de baja) con el historial de versiones.
 //
-// Solo consulta los horarios: no se editan desde aquí. Los datos de la ficha
-// se editan con el mismo formulario del listado, y la baja y la reactivación
-// usan el mismo flujo (useEmployeeStatusFlow).
+// El horario habitual se crea o se cambia con su editor
+// (EmployeeScheduleEditorModal): cada cambio es una versión nueva desde una
+// fecha y el historial no se edita. Los datos de la ficha se editan con el
+// mismo formulario del listado, y la baja y la reactivación usan el mismo
+// flujo (useEmployeeStatusFlow).
 //
 // El acceso a la página lo controla app/middleware/auth.global.js (sesión +
 // cuenta autorizada). Los datos los protege la RLS de Supabase: una empleada
@@ -55,7 +57,7 @@ function showError(feedback) {
   })
 }
 
-// ------------------------------------------------- Horarios (solo lectura)
+// ------------------------------------------------------------- Horarios
 // Fecha de baja y versiones del horario. Si la migración de horarios no está
 // aplicada, `available` es false y la ficha lo indica.
 const today = getTodayDate()
@@ -86,6 +88,27 @@ const history = computed(() => getScheduleHistory(versions.value, today))
 const scheduleTitle = computed(() => schedule.value?.state === PROFILE_SCHEDULE_STATE.LAST_APPLICABLE
   ? 'Último horario habitual'
   : 'Horario habitual')
+
+// Editor del horario habitual: «Crear» si no tiene uno vigente ni próximo,
+// «Cambiar» si lo tiene. Solo con la empleada activa.
+const editorOpen = ref(false)
+const editorContext = computed(() => employee.value
+  ? getScheduleEditorContext({ employee: employee.value, versions: versions.value, today })
+  : null)
+const canEditSchedule = computed(() => Boolean(planningReady.value && planningAvailable.value && editorContext.value?.editable))
+const editorPlanning = computed(() => planning.value.data
+  ? { versions: planning.value.data.versions, overrides: planning.value.data.overrides, absences: planning.value.data.absences }
+  : null)
+
+function onScheduleSaved(saved) {
+  toast.add({
+    title: 'Horario guardado',
+    description: `Rige desde el ${formatLeaveDate(saved.valid_from)}. El anterior se conserva en el historial.`,
+    color: 'success',
+    icon: 'i-lucide-circle-check',
+  })
+  loadPlanning()
+}
 
 // ---------------------------------------------------------------- Edición
 const formOpen = ref(false)
@@ -336,12 +359,24 @@ const statusPending = computed(() => Boolean(employee.value && statusFlow.isPend
           class="rounded-xl bg-default p-4 shadow-xs ring ring-default sm:p-5"
           data-profile-schedule
         >
-          <h2
-            id="profile-schedule-title"
-            class="text-base font-semibold text-highlighted"
-          >
-            {{ scheduleTitle }}
-          </h2>
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <h2
+              id="profile-schedule-title"
+              class="text-base font-semibold text-highlighted"
+            >
+              {{ scheduleTitle }}
+            </h2>
+            <UButton
+              v-if="canEditSchedule"
+              :label="editorContext.mode === SCHEDULE_EDITOR_MODE.CHANGE ? 'Cambiar horario habitual' : 'Crear horario habitual'"
+              :icon="editorContext.mode === SCHEDULE_EDITOR_MODE.CHANGE ? 'i-lucide-calendar-cog' : 'i-lucide-calendar-plus'"
+              :color="editorContext.mode === SCHEDULE_EDITOR_MODE.CHANGE ? 'neutral' : 'primary'"
+              :variant="editorContext.mode === SCHEDULE_EDITOR_MODE.CHANGE ? 'outline' : 'solid'"
+              :disabled="statusPending || planning.status === 'loading'"
+              data-profile-schedule-edit
+              @click="editorOpen = true"
+            />
+          </div>
 
           <div
             v-if="!planningReady && planning.status !== 'error'"
@@ -426,6 +461,14 @@ const statusPending = computed(() => Boolean(employee.value && statusFlow.isPend
             </div>
 
             <p
+              v-if="planningReady && editorContext && !editorContext.editable"
+              class="text-sm text-muted"
+              data-profile-schedule-locked
+            >
+              Para registrar un horario habitual, actívala primero.
+            </p>
+
+            <p
               v-if="schedule.upcoming"
               class="text-sm text-default"
               data-profile-schedule-upcoming
@@ -468,6 +511,14 @@ const statusPending = computed(() => Boolean(employee.value && statusFlow.isPend
         </section>
       </div>
     </div>
+
+    <EmployeeScheduleEditorModal
+      v-if="canEditSchedule"
+      v-model:open="editorOpen"
+      :employee="employee"
+      :planning="editorPlanning"
+      @saved="onScheduleSaved"
+    />
 
     <EmployeeFormModal
       v-model:open="formOpen"
