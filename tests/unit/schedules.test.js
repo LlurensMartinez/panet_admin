@@ -501,6 +501,15 @@ describe('resolveEmployeeDay: prioridades', () => {
     }
   })
 
+  it('versión de fin: horario cerrado si sigue activa sin versión posterior; si no, periodo de baja', () => {
+    const versions = [version(ana, '2026-10-01', W1), closing(ana, '2026-11-04')]
+    expect(day({ employee: ana, versions }, '2026-11-04').terminatedReason).toBe('closed_schedule')
+    expect(day({ employee: { ...ana, is_active: false }, versions }, '2026-11-04').terminatedReason).toBe('leave_period')
+    const reactivated = [...versions, version(ana, '2026-11-09', W1)]
+    expect(day({ employee: ana, versions: reactivated }, '2026-11-05')).toMatchObject({ status: DAY_STATUS.TERMINATED, terminatedReason: 'leave_period' })
+    expect(day({ employee: ana, versions: reactivated }, '2026-11-09').status).toBe(DAY_STATUS.REGULAR)
+  })
+
   it('después del último día de trabajo: baja (el último día cuenta)', () => {
     const employee = { ...ana, is_active: false, last_working_date: '2026-11-04' }
     const params = { employee, versions: [version(ana, '2026-10-01', W1)], overrides: [override(ana, '2026-11-05', [shift('07:00', '09:00')])] }

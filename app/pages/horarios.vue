@@ -7,7 +7,7 @@
 // ausencias). Nunca se modifica el horario habitual ni su historial.
 //
 // Vista «Resumen» (?vista=resumen): horas planificadas por empleada y de la
-// tienda, con las horas extra registradas esa semana aparte (solo lectura).
+// tienda (solo lectura).
 //
 // Las reglas (versiones, bajas, ausencias, cambios de un día, horas reales en
 // Europe/Madrid, turnos nocturnos y conflictos) son las de
@@ -53,23 +53,9 @@ const plan = computed(() => currentData.value
   : null)
 const headers = computed(() => getDayHeaders(dates.value, { today, holidays: holidays.value }))
 
-// Resumen: horas planificadas (las mismas del calendario) y, aparte, las
-// horas extra registradas esa semana.
+// Resumen: las mismas horas planificadas del calendario.
 const isSummary = computed(() => view.value === SCHEDULE_VIEW.SUMMARY)
-const { state: overtimeState, reload: reloadOvertime } = useWeekOvertime(weekStart, isSummary)
-const overtimeReady = computed(() => overtimeState.value.status === 'ready' && overtimeState.value.weekStart === weekStart.value)
-const summary = computed(() => {
-  if (!plan.value) return null
-  const comparison = overtimeReady.value
-    ? buildPlannedVsOvertime({
-        ...currentData.value,
-        overtimeEntries: overtimeState.value.entries,
-        from: dates.value[0],
-        to: dates.value[6],
-      })
-    : null
-  return buildWeekSummary({ plan: plan.value, comparison })
-})
+const summary = computed(() => plan.value ? buildWeekSummary({ plan: plan.value }) : null)
 
 // Día elegido en la vista diaria: al cambiar de semana, hoy o el lunes.
 const selectedDate = ref(getDefaultSelectedDate(dates.value, today))
@@ -208,8 +194,6 @@ function reloadPage() {
     <ScheduleWeekSummary
       v-else-if="plan && isSummary"
       :summary="summary"
-      :overtime="overtimeState"
-      @retry-overtime="reloadOvertime()"
     />
 
     <template v-else-if="plan">

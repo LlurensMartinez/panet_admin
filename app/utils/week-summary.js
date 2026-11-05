@@ -2,20 +2,13 @@
 // /horarios), sin dependencias de Nuxt ni de Supabase.
 //
 // No calcula nada por su cuenta: las horas planificadas salen de
-// buildWeekPlan y la comparación con las horas extra, de
-// buildPlannedVsOvertime (app/utils/schedules.js), que usa
-// filterOvertimeEntries y sumDurationMinutes de horas extra.
-//
-// Las horas extra se muestran APARTE: no se suman a las planificadas, no
-// cambian el horario y no son horas trabajadas comprobadas (se registran a
-// mano). No hay cálculos de nómina, compensaciones ni fichajes.
+// buildWeekPlan (app/utils/schedules.js). La comparación con las horas extra
+// registradas está preparada en buildPlannedVsOvertime (schedules.js), pero
+// todavía no se muestra (SPEC.md, 3.9). No hay cálculos de nómina,
+// compensaciones ni fichajes.
 
-import { getEmployeeFullName, sortEmployees } from './employees.js'
-import { DAY_STATUS } from './schedules.js'
+import { DAY_STATUS, TERMINATED_REASON } from './schedules.js'
 import { formatDuration } from './overtime.js'
-
-/** Columnas mínimas de horas extra para el resumen (solo lectura). */
-export const WEEK_OVERTIME_COLUMNS = 'id, employee_id, work_date, duration_minutes'
 
 /** Parámetro de la URL con la vista de /horarios (?vista=resumen). */
 export const VIEW_QUERY_KEY = 'vista'
@@ -30,7 +23,7 @@ export const SUMMARY_STATUS = Object.freeze({
   PLANNED: 'planned',
   // Tiene planificación, pero de cero horas (descanso, libres, ausencias…).
   ZERO: 'zero',
-  // No tiene planificación esa semana (sin horario, o de baja).
+  // No tiene planificación esa semana (sin horario, horario cerrado o de baja).
   NONE: 'none',
 })
 
@@ -41,7 +34,7 @@ export function resolveViewParam(value) {
 
 /** Recuento de días de la semana por situación. */
 export function countWeekDays(days) {
-  const counts = { work: 0, rest: 0, dayOff: 0, absence: 0, terminated: 0, noSchedule: 0, changes: 0 }
+  const counts = { work: 0, rest: 0, dayOff: 0, absence: 0, terminated: 0, closedSchedule: 0, noSchedule: 0, changes: 0 }
   for (const day of days ?? []) {
     if (day.minutes > 0) counts.work++
     switch (day.status) {
@@ -59,7 +52,9 @@ export function countWeekDays(days) {
         counts.absence++
         break
       case DAY_STATUS.TERMINATED:
-        counts.terminated++
+        // El horario cerrado de una empleada activa no es una baja.
+        if (day.terminatedReason === TERMINATED_REASON.CLOSED_SCHEDULE) counts.closedSchedule++
+        else counts.terminated++
         break
       case DAY_STATUS.NO_SCHEDULE:
         counts.noSchedule++
@@ -73,7 +68,7 @@ export function countWeekDays(days) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
 
-/** «5 días con turnos · 1 libre · 2 de ausencia · 1 cambio». */
+/** «5 días con turnos · 1 libre · 2 de ausencia · 1 cambio de un día». */
 export function describeWeekDays(counts) {
   if (!counts) return ''
   return [
@@ -82,26 +77,20 @@ export function describeWeekDays(counts) {
     counts.dayOff ? plural(counts.dayOff, 'libre', 'libres') : null,
     counts.absence ? plural(counts.absence, 'de ausencia', 'de ausencia') : null,
     counts.terminated ? plural(counts.terminated, 'de baja', 'de baja') : null,
+    counts.closedSchedule ? plural(counts.closedSchedule, 'con horario cerrado', 'con horario cerrado') : null,
     counts.changes ? plural(counts.changes, 'cambio de un día', 'cambios de un día') : null,
   ].filter(Boolean).join(' · ')
 }
 
 /**
- * Resumen de la semana: una fila por empleada visible en el calendario (y
- * por cualquier otra con horas extra registradas esa semana), con sus horas
- * planificadas, el desglose de días y, aparte, las horas extra registradas.
+ * Resumen de la semana: una fila por empleada visible en el calendario (en
+ * el mismo orden), con sus horas planificadas y el desglose de días.
  *
  * @param {object} params
  * @param {object} params.plan resultado de buildWeekPlan
- * @param {object | null} params.comparison resultado de buildPlannedVsOvertime
- *   para la misma semana, o null si las horas extra no se han podido cargar
  */
-export function buildWeekSummary({ plan, comparison = null }) {
-  const byId = new Map((comparison?.rows ?? []).map(row => [row.employeeId, row]))
-  const planIds = new Set((plan?.rows ?? []).map(row => row.employeeId))
-
-  const fromPlan = (plan?.rows ?? []).map((row) => {
-    const counts = countWeekDays(row.days)
+export function buildWeekSummary({ plan }) {
+  const rows = (plan?.rows ?? []).map((row) => {
     const status = !row.hasPlanning
       ? SUMMARY_STATUS.NONE
       : row.totalMinutes > 0 ? SUMMARY_STATUS.PLANNED : SUMMARY_STATUS.ZERO
@@ -111,39 +100,15 @@ export function buildWeekSummary({ plan, comparison = null }) {
       name: row.name,
       status,
       plannedMinutes: row.totalMinutes,
-      counts,
+      counts: countWeekDays(row.days),
       conflictCount: row.conflicts.length,
       errorCount: row.errorCount,
-      overtimeMinutes: comparison ? (byId.get(row.employeeId)?.overtimeMinutes ?? 0) : null,
-      overtimeCount: comparison ? (byId.get(row.employeeId)?.overtimeCount ?? 0) : null,
     }
   })
-
-  // Empleadas que no salen en el calendario pero tienen horas extra esa semana.
-  const onlyOvertime = (comparison?.rows ?? [])
-    .filter(row => !planIds.has(row.employeeId) && row.overtimeCount > 0)
-    .map(row => ({
-      employeeId: row.employeeId,
-      employee: row.employee,
-      name: row.name ?? getEmployeeFullName(row.employee),
-      status: SUMMARY_STATUS.NONE,
-      plannedMinutes: 0,
-      counts: null,
-      conflictCount: 0,
-      errorCount: 0,
-      overtimeMinutes: row.overtimeMinutes,
-      overtimeCount: row.overtimeCount,
-    }))
-
-  const order = new Map(sortEmployees([...fromPlan, ...onlyOvertime].map(row => ({ ...row.employee, id: row.employeeId })))
-    .map((employee, index) => [employee.id, index]))
-  const rows = [...fromPlan, ...onlyOvertime].sort((a, b) => order.get(a.employeeId) - order.get(b.employeeId))
 
   return {
     rows,
     plannedMinutes: plan?.totalMinutes ?? 0,
-    overtimeMinutes: comparison ? rows.reduce((total, row) => total + (row.overtimeMinutes ?? 0), 0) : null,
-    overtimeCount: comparison ? rows.reduce((total, row) => total + (row.overtimeCount ?? 0), 0) : null,
     withPlanning: rows.filter(row => row.status !== SUMMARY_STATUS.NONE).length,
     withoutPlanning: rows.filter(row => row.status === SUMMARY_STATUS.NONE).length,
   }
@@ -152,11 +117,4 @@ export function buildWeekSummary({ plan, comparison = null }) {
 /** Texto de las horas planificadas de una fila: «35 h», «0 h» o «Sin planificación». */
 export function describePlannedHours(row) {
   return row.status === SUMMARY_STATUS.NONE ? 'Sin planificación' : formatDuration(row.plannedMinutes)
-}
-
-/** Texto de las horas extra registradas: «1 h 30 min (2 registros)», «—». */
-export function describeOvertime(row) {
-  if (row.overtimeMinutes === null || row.overtimeMinutes === undefined) return ''
-  if (!row.overtimeCount) return '—'
-  return `${formatDuration(row.overtimeMinutes)} (${plural(row.overtimeCount, 'registro', 'registros')})`
 }

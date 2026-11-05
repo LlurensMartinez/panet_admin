@@ -19,7 +19,9 @@
 //
 // Prioridad para una empleada y un día (la misma que private.planned_shifts):
 //   1. después de su último día de trabajo → baja;
-//   2. versión vigente de tipo «end» → baja (periodo de baja anterior);
+//   2. versión vigente de tipo «end» → sin horario: periodo de baja anterior
+//      o, si la empleada sigue activa y no hay una versión posterior, horario
+//      cerrado (ver TERMINATED_REASON);
 //   3. ausencia → sin turnos;
 //   4. cambio de ese día → sus turnos (o día libre);
 //   5. versión vigente de tipo «schedule» → turnos de ese día de la semana;
@@ -66,10 +68,23 @@ export const DAY_STATUS = Object.freeze({
   DAY_OFF: 'day_off',
   // Vacaciones, permiso u otra ausencia.
   ABSENCE: 'absence',
-  // Baja: después del último día de trabajo o en un periodo de baja anterior.
+  // Sin planificación posible: después del último día de trabajo, en un
+  // periodo de baja anterior o con el horario cerrado (ver TERMINATED_REASON).
   TERMINATED: 'terminated',
   // Sin horario registrado (antes de la primera versión).
   NO_SCHEDULE: 'no_schedule',
+})
+
+/** Por qué un día está en DAY_STATUS.TERMINATED. */
+export const TERMINATED_REASON = Object.freeze({
+  // Después de su último día de trabajo (está de baja).
+  AFTER_LAST_DAY: 'after_last_day',
+  // Versión «end» de un periodo de baja: la empleada está de baja, o lo estuvo
+  // y después tuvo un horario nuevo.
+  LEAVE_PERIOD: 'leave_period',
+  // Versión «end» sin ninguna versión posterior y la empleada sigue activa
+  // (por ejemplo, reactivada sin copiar su horario): horario cerrado, no baja.
+  CLOSED_SCHEDULE: 'closed_schedule',
 })
 
 /** Origen de un turno: habitual o excepción. */
@@ -438,7 +453,8 @@ function buildShifts(date, shifts, origin, timeZone) {
  */
 export function resolveEmployeeDay({ employee, versions = [], overrides = [], absences = [], date, timeZone = SHOP_TIME_ZONE }) {
   const employeeId = employee?.id
-  const version = getVersionForDate(forEmployee(versions, employeeId), date)
+  const employeeVersions = forEmployee(versions, employeeId)
+  const version = getVersionForDate(employeeVersions, date)
   const day = {
     date,
     weekday: getIsoWeekday(date),
@@ -453,10 +469,13 @@ export function resolveEmployeeDay({ employee, versions = [], overrides = [], ab
   }
 
   if (employee?.last_working_date && date > employee.last_working_date) {
-    return { ...day, status: DAY_STATUS.TERMINATED, terminatedReason: 'after_last_day' }
+    return { ...day, status: DAY_STATUS.TERMINATED, terminatedReason: TERMINATED_REASON.AFTER_LAST_DAY }
   }
   if (version?.kind === SCHEDULE_KIND.END) {
-    return { ...day, status: DAY_STATUS.TERMINATED, terminatedReason: 'closed_schedule' }
+    const isActive = employee?.is_active === true && !employee?.last_working_date
+    const hasLaterVersion = employeeVersions.some(other => other.valid_from > version.valid_from)
+    const terminatedReason = isActive && !hasLaterVersion ? TERMINATED_REASON.CLOSED_SCHEDULE : TERMINATED_REASON.LEAVE_PERIOD
+    return { ...day, status: DAY_STATUS.TERMINATED, terminatedReason }
   }
 
   const absence = findAbsenceForDate(forEmployee(absences, employeeId), date)

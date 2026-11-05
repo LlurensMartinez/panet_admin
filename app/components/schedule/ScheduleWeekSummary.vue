@@ -1,15 +1,11 @@
 <script setup>
 // Resumen de horas planificadas de la semana (solo consulta): por empleada y
-// de la tienda, con el desglose de días y, aparte, las horas extra
-// registradas esa semana. Los datos llegan ya calculados (buildWeekSummary).
+// de la tienda, con el desglose de días. Los datos llegan ya calculados
+// (buildWeekSummary).
 defineProps({
   // buildWeekSummary()
   summary: { type: Object, required: true },
-  // Estado de la carga de horas extra (useWeekOvertime).
-  overtime: { type: Object, required: true },
 })
-
-const emit = defineEmits(['retry-overtime'])
 
 const STATUS_CLASSES = {
   [SUMMARY_STATUS.PLANNED]: 'text-highlighted',
@@ -24,7 +20,7 @@ const STATUS_CLASSES = {
     data-week-summary
   >
     <!-- Totales -->
-    <dl class="grid gap-3 sm:grid-cols-3">
+    <dl class="grid gap-3 sm:grid-cols-2">
       <div class="rounded-xl bg-default px-4 py-3 shadow-xs ring ring-default">
         <dt class="text-sm text-muted">
           Horas planificadas de la tienda
@@ -34,23 +30,6 @@ const STATUS_CLASSES = {
           data-summary-planned-total
         >
           {{ formatPlanMinutes(summary.plannedMinutes) }}
-        </dd>
-      </div>
-      <div class="rounded-xl bg-default px-4 py-3 shadow-xs ring ring-default">
-        <dt class="text-sm text-muted">
-          Horas extra registradas
-        </dt>
-        <dd
-          class="mt-1 text-2xl font-semibold text-highlighted tabular-nums"
-          data-summary-overtime-total
-        >
-          <template v-if="summary.overtimeMinutes !== null">
-            {{ formatPlanMinutes(summary.overtimeMinutes) }}
-          </template>
-          <span
-            v-else
-            class="text-base font-normal text-muted"
-          >{{ overtime.status === 'error' ? 'No disponibles' : 'Cargando…' }}</span>
         </dd>
       </div>
       <div class="rounded-xl bg-default px-4 py-3 shadow-xs ring ring-default">
@@ -66,27 +45,6 @@ const STATUS_CLASSES = {
       </div>
     </dl>
 
-    <UAlert
-      v-if="overtime.status === 'error'"
-      color="warning"
-      variant="subtle"
-      icon="i-lucide-triangle-alert"
-      title="No se han podido cargar las horas extra"
-      :description="`${overtime.message} Las horas planificadas sí están actualizadas.`"
-      :actions="[{ label: 'Reintentar', color: 'warning', variant: 'outline', icon: 'i-lucide-refresh-cw', onClick: () => emit('retry-overtime') }]"
-      data-summary-overtime-error
-    />
-
-    <p
-      class="text-pretty text-sm text-muted"
-      data-summary-note
-    >
-      Las horas extra son las registradas a mano en <NuxtLink
-        to="/horas-extra"
-        class="font-medium text-default underline underline-offset-2 hover:text-primary"
-      >Horas extra</NuxtLink> con fecha de esta semana. Se muestran aparte: no se suman a las horas planificadas, no cambian el horario y no indican las horas trabajadas de verdad.
-    </p>
-
     <!-- Escritorio -->
     <div class="hidden overflow-hidden rounded-xl bg-default shadow-xs ring ring-default md:block">
       <table
@@ -94,13 +52,12 @@ const STATUS_CLASSES = {
         data-summary-table
       >
         <caption class="sr-only">
-          Horas planificadas y horas extra registradas por empleada
+          Horas planificadas por empleada
         </caption>
         <colgroup>
-          <col class="w-[28%]">
-          <col class="w-[16%]">
+          <col class="w-[32%]">
+          <col class="w-[18%]">
           <col>
-          <col class="w-[20%]">
         </colgroup>
         <thead>
           <tr class="border-b border-default bg-elevated/50 text-start text-xs text-muted">
@@ -121,12 +78,6 @@ const STATUS_CLASSES = {
               class="px-3 py-2.5 text-start font-medium"
             >
               Días
-            </th>
-            <th
-              scope="col"
-              class="px-4 py-2.5 text-end font-medium"
-            >
-              Horas extra registradas
             </th>
           </tr>
         </thead>
@@ -175,13 +126,6 @@ const STATUS_CLASSES = {
                 class="block text-xs font-medium text-amber-800 dark:text-amber-300"
               >Revisa el calendario: {{ row.conflictCount ? 'turnos solapados' : 'hora no válida' }}</span>
             </td>
-            <td
-              class="px-4 py-3 text-end align-top tabular-nums"
-              :class="row.overtimeCount ? 'text-default' : 'text-dimmed'"
-              data-summary-overtime
-            >
-              {{ describeOvertime(row) || '…' }}
-            </td>
           </tr>
         </tbody>
         <tfoot>
@@ -196,9 +140,6 @@ const STATUS_CLASSES = {
               {{ formatPlanMinutes(summary.plannedMinutes) }}
             </td>
             <td />
-            <td class="px-4 py-2.5 text-end font-semibold text-highlighted tabular-nums">
-              {{ summary.overtimeMinutes !== null ? formatPlanMinutes(summary.overtimeMinutes) : '' }}
-            </td>
           </tr>
         </tfoot>
       </table>
@@ -237,24 +178,10 @@ const STATUS_CLASSES = {
         >
           {{ describeWeekDays(row.counts) }}
         </p>
-        <p
-          v-if="row.overtimeMinutes !== null"
-          class="text-sm"
-          :class="row.overtimeCount ? 'text-default' : 'text-dimmed'"
-          data-summary-overtime
-        >
-          Horas extra registradas: {{ describeOvertime(row) }}
-        </p>
       </li>
       <li class="flex items-baseline justify-between gap-3 bg-elevated/50 px-4 py-3 text-sm">
         <span class="font-semibold text-highlighted">Total tienda</span>
-        <span class="text-end">
-          <span class="block font-semibold text-highlighted tabular-nums">{{ formatPlanMinutes(summary.plannedMinutes) }} planificadas</span>
-          <span
-            v-if="summary.overtimeMinutes !== null"
-            class="block text-muted tabular-nums"
-          >{{ formatPlanMinutes(summary.overtimeMinutes) }} de horas extra registradas</span>
-        </span>
+        <span class="font-semibold text-highlighted tabular-nums">{{ formatPlanMinutes(summary.plannedMinutes) }} planificadas</span>
       </li>
     </ul>
   </div>

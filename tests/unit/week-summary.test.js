@@ -4,12 +4,12 @@ import {
   SUMMARY_STATUS,
   buildWeekSummary,
   countWeekDays,
-  describeOvertime,
   describePlannedHours,
   describeWeekDays,
   resolveViewParam,
 } from '../../app/utils/week-summary.js'
-import { buildPlannedVsOvertime, buildWeekPlan } from '../../app/utils/schedules.js'
+import { DAY_STATUS, TERMINATED_REASON, buildWeekPlan } from '../../app/utils/schedules.js'
+import { getDayCellView } from '../../app/utils/week-calendar.js'
 
 // Semana del lunes 2 al domingo 8 de noviembre de 2026; hoy, jueves 5.
 const TODAY = '2026-11-05'
@@ -49,19 +49,9 @@ const absences = [
   { id: 'a1', employee_id: 'berta', absence_type: 'vacation', start_date: '2026-11-06', end_date: '2026-11-07' },
   { id: 'a2', employee_id: 'eva', absence_type: 'vacation', start_date: '2026-11-01', end_date: '2026-11-10' },
 ]
-const overtimeEntries = [
-  { id: 'x1', employee_id: 'ana', work_date: '2026-11-03', duration_minutes: 45 },
-  { id: 'x2', employee_id: 'ana', work_date: '2026-11-08', duration_minutes: 30 },
-  { id: 'x3', employee_id: 'ana', work_date: '2026-11-09', duration_minutes: 60 }, // otra semana
-  { id: 'x4', employee_id: 'fina', work_date: '2026-11-04', duration_minutes: 20 }, // no sale en el calendario
-]
-
-function summary({ withOvertime = true, date = '2026-11-02' } = {}) {
+function summary({ date = '2026-11-02' } = {}) {
   const plan = buildWeekPlan({ employees, versions, overrides, absences, date, today: TODAY })
-  const comparison = withOvertime
-    ? buildPlannedVsOvertime({ employees, versions, overrides, absences, overtimeEntries, from: plan.dates[0], to: plan.dates[6] })
-    : null
-  return { plan, result: buildWeekSummary({ plan, comparison }) }
+  return { plan, result: buildWeekSummary({ plan }) }
 }
 const row = (result, id) => result.rows.find(r => r.employeeId === id)
 
@@ -120,51 +110,90 @@ describe('buildWeekSummary', () => {
     expect(describePlannedHours(row(later.result, 'carmen'))).toBe('Sin planificación')
   })
 
-  it('horas extra de la misma semana, aparte de las planificadas', () => {
+  it('no incluye horas extra (la comparación está preparada, pero no se muestra)', () => {
     const { result } = summary()
-    expect(row(result, 'ana')).toMatchObject({ overtimeMinutes: 75, overtimeCount: 2 })
-    expect(describeOvertime(row(result, 'ana'))).toBe('1 h 15 min (2 registros)')
-    expect(row(result, 'berta')).toMatchObject({ overtimeMinutes: 0, overtimeCount: 0 })
-    expect(describeOvertime(row(result, 'berta'))).toBe('—')
-    // Las horas extra no se suman a las planificadas.
-    expect(result.plannedMinutes).toBe((35 + 18 + 4 + 14) * 60)
-    expect(result.overtimeMinutes).toBe(95)
-    expect(result.overtimeCount).toBe(3)
-  })
-
-  it('incluye a quien no sale en el calendario pero tiene horas extra esa semana', () => {
-    const { result } = summary()
-    expect(row(result, 'fina')).toMatchObject({ status: SUMMARY_STATUS.NONE, plannedMinutes: 0, overtimeMinutes: 20, counts: null })
-  })
-
-  it('sin horas extra cargadas: solo las planificadas', () => {
-    const { result } = summary({ withOvertime: false })
-    expect(result.overtimeMinutes).toBeNull()
-    expect(row(result, 'ana').overtimeMinutes).toBeNull()
-    expect(describeOvertime(row(result, 'ana'))).toBe('')
+    expect(result).not.toHaveProperty('overtimeMinutes')
+    expect(row(result, 'ana')).not.toHaveProperty('overtimeMinutes')
+    // Fina (de baja, sin planificación) no sale en el calendario ni en el resumen.
     expect(row(result, 'fina')).toBeUndefined()
+  })
+
+  it('no modifica los datos de partida', () => {
+    const input = JSON.stringify({ employees, versions, overrides, absences })
+    const { plan } = summary()
+    const planCopy = JSON.stringify(plan)
+    buildWeekSummary({ plan })
+    expect(JSON.stringify({ employees, versions, overrides, absences })).toBe(input)
+    expect(JSON.stringify(plan)).toBe(planCopy)
   })
 
   it('orden por nombre y recuentos', () => {
     const { result } = summary()
-    expect(result.rows.map(r => r.employeeId)).toEqual(['ana', 'berta', 'carmen', 'dani', 'eva', 'fina'])
+    expect(result.rows.map(r => r.employeeId)).toEqual(['ana', 'berta', 'carmen', 'dani', 'eva'])
     expect(result.withPlanning).toBe(5)
-    expect(result.withoutPlanning).toBe(1)
+    expect(result.withoutPlanning).toBe(0)
   })
 
   it('semana de cero horas para toda la tienda', () => {
     const plan = buildWeekPlan({ employees: [emp('eva', 'Eva')], versions: [version('eva', '2026-10-01', W1)], absences, date: '2026-11-02', today: TODAY })
-    const result = buildWeekSummary({ plan, comparison: null })
+    const result = buildWeekSummary({ plan })
     expect(result.plannedMinutes).toBe(0)
     expect(result.rows[0].status).toBe(SUMMARY_STATUS.ZERO)
   })
 
   it('sin plan: resumen vacío', () => {
-    expect(buildWeekSummary({ plan: null })).toMatchObject({ rows: [], plannedMinutes: 0, overtimeMinutes: null })
+    expect(buildWeekSummary({ plan: null })).toMatchObject({ rows: [], plannedMinutes: 0, withPlanning: 0 })
   })
 
   it('countWeekDays y describeWeekDays sin datos', () => {
-    expect(countWeekDays(null)).toEqual({ work: 0, rest: 0, dayOff: 0, absence: 0, terminated: 0, noSchedule: 0, changes: 0 })
+    expect(countWeekDays(null)).toEqual({ work: 0, rest: 0, dayOff: 0, absence: 0, terminated: 0, closedSchedule: 0, noSchedule: 0, changes: 0 })
     expect(describeWeekDays(null)).toBe('')
+  })
+})
+
+describe('horario cerrado frente a baja', () => {
+  const plan = (employee, list, date = '2026-11-02') => buildWeekPlan({ employees: [employee], versions: list, date, today: TODAY })
+  const days = (employee, list, date) => plan(employee, list, date).rows[0]?.days ?? []
+
+  it('activa con el horario cerrado y sin versión posterior: «Horario cerrado», no baja', () => {
+    const gema = emp('gema', 'Gema')
+    const list = [version('gema', '2026-10-01', W1), version('gema', '2026-11-04', null, 'end')]
+    const week = days(gema, list)
+    expect(week[3]).toMatchObject({ status: DAY_STATUS.TERMINATED, terminatedReason: TERMINATED_REASON.CLOSED_SCHEDULE })
+    expect(getDayCellView(week[3]).label).toBe('Horario cerrado')
+    const counts = countWeekDays(week)
+    expect(counts).toMatchObject({ work: 2, closedSchedule: 5, terminated: 0 })
+    expect(describeWeekDays(counts)).toBe('2 días con turnos · 5 con horario cerrado')
+    // Una semana entera con el horario cerrado: sin planificación, no 0 h.
+    const later = buildWeekSummary({ plan: plan(gema, list, '2026-11-09') })
+    expect(later.rows[0]).toMatchObject({ status: SUMMARY_STATUS.NONE })
+    expect(describeWeekDays(later.rows[0].counts)).toBe('7 con horario cerrado')
+  })
+
+  it('de baja (después del último día): sigue siendo «Baja»', () => {
+    const week = days(employees[3], versions.filter(v => v.employee_id === 'dani'))
+    expect(week[3]).toMatchObject({ status: DAY_STATUS.TERMINATED, terminatedReason: TERMINATED_REASON.AFTER_LAST_DAY })
+    expect(getDayCellView(week[3]).label).toBe('Baja')
+    expect(countWeekDays(week)).toMatchObject({ terminated: 5, closedSchedule: 0 })
+  })
+
+  it('desactivada sin último día y con el horario cerrado: «Baja»', () => {
+    const hana = emp('hana', 'Hana', { is_active: false })
+    const list = [version('hana', '2026-10-01', W1), version('hana', '2026-11-04', null, 'end')]
+    const week = days(hana, list)
+    expect(week[3]).toMatchObject({ status: DAY_STATUS.TERMINATED, terminatedReason: TERMINATED_REASON.LEAVE_PERIOD })
+    expect(getDayCellView(week[3]).label).toBe('Baja')
+  })
+
+  it('reactivada con un horario nuevo: el periodo de baja anterior sigue siendo «Baja»', () => {
+    const irene = emp('irene', 'Irene')
+    const list = [version('irene', '2026-10-01', W1), version('irene', '2026-11-03', null, 'end'), version('irene', '2026-11-06', W1)]
+    const week = days(irene, list)
+    expect(week.map(d => d.status)).toEqual([
+      DAY_STATUS.REGULAR, DAY_STATUS.TERMINATED, DAY_STATUS.TERMINATED, DAY_STATUS.TERMINATED, DAY_STATUS.REGULAR, DAY_STATUS.REGULAR, DAY_STATUS.REST,
+    ])
+    expect(week[1].terminatedReason).toBe(TERMINATED_REASON.LEAVE_PERIOD)
+    expect(getDayCellView(week[1]).label).toBe('Baja')
+    expect(countWeekDays(week)).toMatchObject({ terminated: 3, closedSchedule: 0 })
   })
 })

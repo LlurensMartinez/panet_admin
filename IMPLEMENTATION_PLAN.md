@@ -216,16 +216,19 @@ Alcance ampliado el 5 de noviembre de 2026: horario habitual por versiones, cale
 
 **Bloque 7 — Resumen de horas planificadas** *(hecho en local)*
 - Pestaña «Resumen de horas» en `/horarios` (`?vista=resumen`; la navegación de semanas conserva la vista). No duplica la página: sustituye a la cuadrícula.
-- Por empleada: horas planificadas, reparto de los días, avisos si hay conflictos o errores, enlace a la ficha y horas extra registradas de la semana, aparte. Total de la tienda y «Con planificación N de M».
+- Por empleada: horas planificadas, reparto de los días, avisos si hay conflictos o errores y enlace a la ficha. Total de la tienda y «Con planificación N de M».
 - «Sin planificación» frente a 0 h planificadas.
 - Escritorio: tabla con fila «Total tienda»; móvil: lista sin desplazamiento horizontal.
-- Cálculo con `buildWeekPlan` y `buildPlannedVsOvertime` (`schedules.js`), sin duplicar reglas. Las horas extra se cargan solo en esta vista (`useWeekOvertime`, `work_date` de lunes a domingo); su error no oculta las horas planificadas.
+- Cálculo con `buildWeekPlan` (`schedules.js`), sin duplicar reglas.
+- La comparación con horas extra (`buildPlannedVsOvertime`) sigue preparada y sin mostrarse: el resumen no consulta `overtime_entries`.
+- «Horario cerrado» en lugar de «Baja» (calendario y resumen) cuando la empleada sigue activa y su último horario está cerrado sin versión posterior (`TERMINATED_REASON` en `schedules.js`). Las empleadas de baja y los periodos de baja anteriores siguen como «Baja».
 - Solo lectura. Sin cambios en horas extra, horarios, excepciones ni ausencias. Sin migraciones.
 - Archivos:
   - `app/utils/week-summary.js`, con pruebas en `tests/unit/week-summary.test.js`;
-  - `app/composables/useWeekOvertime.js`;
   - `app/components/schedule/ScheduleWeekSummary.vue`;
-  - `app/pages/horarios.vue` (selector de vista).
+  - `app/pages/horarios.vue` (selector de vista);
+  - `app/utils/schedules.js` y `app/utils/week-calendar.js` (horario cerrado).
+- Limitación conocida: sin la fecha de vuelta guardada, una reactivación sin copiar el horario no permite separar los días de baja anteriores a la vuelta (se marcan como «Horario cerrado») ni, si después se crea un horario nuevo, los días sin horario posteriores a la vuelta (se marcan como «Baja»).
 - Pendiente: repaso final de la documentación de la fase.
 
 Los festivos y sus avisos se trasladaron a la Fase 3.

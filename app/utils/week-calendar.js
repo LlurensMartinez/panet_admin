@@ -6,7 +6,7 @@
 import { DB_ERROR_KIND } from './database-errors.js'
 import { formatDuration, getTodayDate, isValidDate, addDaysToDate } from './overtime.js'
 import { getAbsenceTypeLabel } from './employee-leave.js'
-import { DAY_STATUS, describeShiftError, getWeekStart } from './schedules.js'
+import { DAY_STATUS, TERMINATED_REASON, describeShiftError, getWeekStart } from './schedules.js'
 import { WEEKDAYS } from './suppliers.js'
 import { findHolidayByDate } from './holidays.js'
 
@@ -135,7 +135,8 @@ export function getDayCellView(day) {
     case DAY_STATUS.ABSENCE:
       return { ...base, tone: CELL_TONE.ABSENCE, label: getAbsenceTypeLabel(day.absence?.absence_type), isException: true }
     case DAY_STATUS.TERMINATED:
-      return { ...base, tone: CELL_TONE.TERMINATED, label: 'Baja' }
+      // «Horario cerrado» si sigue activa; «Baja» si está o estaba de baja.
+      return { ...base, tone: CELL_TONE.TERMINATED, label: day.terminatedReason === TERMINATED_REASON.CLOSED_SCHEDULE ? 'Horario cerrado' : 'Baja' }
     default:
       return { ...base, tone: CELL_TONE.EMPTY, label: 'Sin horario' }
   }
