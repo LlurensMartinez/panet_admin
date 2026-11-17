@@ -1,0 +1,11 @@
+# El escaneo de secretos de Netlify sigue activo para todo lo demás
+# (incluida NUXT_SUPABASE_SECRET_KEY). Solo se excluyen valores que Nuxt
+# incrusta a propósito en la compilación y que no son credenciales:
+#   - NUXT_PUBLIC_SUPABASE_URL y NUXT_PUBLIC_SUPABASE_KEY: URL y clave
+#     publicable (sb_publishable_…) de Supabase. Van al navegador por diseño;
+#     la seguridad de los datos la da RLS en la base de datos.
+#   - NUXT_PANET_ADMIN_USER_ID: UUID de la cuenta de administración. Es un
+#     identificador, no una credencial, y solo queda en el bundle del servidor
+#     (runtimeConfig privado), nunca en el del navegador.
+[secrets_scanning]
+  omit_keys = ["NUXT_PUBLIC_SUPABASE_URL", "NUXT_PUBLIC_SUPABASE_KEY", "NUXT_PANET_ADMIN_USER_ID"]
