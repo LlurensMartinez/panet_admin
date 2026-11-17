@@ -30,6 +30,16 @@ export default defineNuxtConfig({
     fonts: false,
   },
 
+  // Variables privadas del servidor (nunca llegan al navegador):
+  //   - NUXT_PANET_ADMIN_USER_ID: UUID (Supabase Auth) de la cuenta de
+  //     administración principal, la única que puede gestionar usuarios.
+  //   - NUXT_SUPABASE_SECRET_KEY: clave secreta de Supabase, la lee el módulo
+  //     de Supabase (runtimeConfig.supabase.secretKey) y solo la usan las
+  //     rutas de server/api/admin. Ver SUPABASE_SETUP.md, sección 15.
+  runtimeConfig: {
+    panetAdminUserId: '',
+  },
+
   compatibilityDate: '2026-10-28',
 
   eslint: {

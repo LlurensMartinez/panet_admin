@@ -256,6 +256,30 @@ Los festivos y sus avisos se trasladaron a la Fase 3.
 
 **Aceptación:** se puede configurar el horario habitual de cada trabajadora sin repetirlo cada semana, cambiar días concretos y registrar ausencias sin alterar el horario habitual, y consultar la semana con las horas previstas en móvil y ordenador. La baja conserva el historial y no toca las horas extra.
 
+## Gestión de usuarios *(hecho en local; sin migración)*
+Pedido el 5 de noviembre de 2026. Cambia `SPEC.md`, apartado 2: además de la encargada, puede haber otras cuentas invitadas.
+- **Cuenta de administración principal:** UUID en `NUXT_PANET_ADMIN_USER_ID` (variable privada del servidor) y con fila en `profiles`. Las demás cuentas autorizadas son normales.
+- **`/usuarios`** (solo administración; enlace «Usuarios» en la cabecera):
+  - lista de cuentas con acceso, con «Invitación pendiente» o «Activo»;
+  - «Invitar usuario» (diálogo con el correo);
+  - «Quitar acceso» con confirmación (nunca la propia cuenta).
+- **Servidor** (`server/api/admin/`):
+  - `me` (¿es administración?), `users` (listar e invitar), `users/[id]` (revocar);
+  - cada operación valida la sesión con Supabase y comprueba la cuenta de administración (`server/utils/user-admin.js`);
+  - las que modifican datos rechazan las peticiones de otros sitios;
+  - la clave secreta solo se usa aquí (`NUXT_SUPABASE_SECRET_KEY`).
+- **Invitar:** `auth.admin.inviteUserByEmail` con el enlace a `/bienvenida` y una fila en `profiles`. Si la cuenta existía sin acceso, se le devuelve el acceso sin correo; si ya lo tiene, se avisa.
+- **`/bienvenida`** (pública): la persona invitada elige su contraseña con la sesión del enlace y entra.
+- **Revocar:** borra la fila de `profiles`; la cuenta de Auth se conserva. La RLS le corta los datos en la siguiente petición y, al recargar, va a `/acceso-denegado`.
+- No toca empleados, horarios, horas extra, pedidos ni proveedores, ni las políticas RLS. Sin migraciones.
+- Archivos:
+  - `shared/utils/users.js` (lógica compartida), con pruebas en `tests/unit/users.test.js`;
+  - `server/utils/user-admin.js` y `server/api/admin/…`;
+  - `app/composables/useUserAdmin.js` y `app/middleware/admin.js`;
+  - `app/pages/usuarios.vue`, `app/pages/bienvenida.vue` y `app/components/user/`;
+  - cambios pequeños en `app/middleware/auth.global.js` (`/bienvenida` pública), `app/layouts/default.vue` (enlace), `app/error.vue` (error 403) y `nuxt.config.js` (`runtimeConfig.panetAdminUserId`).
+- **Pendiente en el proyecto real:** variables del servidor, *Redirect URLs*, SMTP propio y plantilla del correo (`SUPABASE_SETUP.md`, sección 15).
+
 ## Fase 6 — Dashboard y pulido responsive
 - Mostrar pedidos de hoy, pedidos pendientes, próximas entregas y resumen de horas extra. *(Pedidos de hoy y mañana con sus productos: hecho en el Bloque 5 de la Fase 3. Pendiente: resumen de horas extra en Inicio.)*
 - Ajustar navegación y formularios para móvil.

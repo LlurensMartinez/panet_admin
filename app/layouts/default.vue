@@ -17,6 +17,12 @@ const NAV_ITEMS = [
 function isCurrent(item) {
   return item.exact ? route.path === item.to : route.path.startsWith(item.to)
 }
+
+// «Usuarios» solo para la cuenta de administración principal (lo decide el
+// servidor; ver useUserAdmin). Se comprueba una vez por sesión.
+const { state: adminState, checkAdmin } = useUserAdmin()
+const showUsers = computed(() => adminState.value.isAdmin && adminState.value.userId === (user.value?.sub ?? user.value?.id))
+onMounted(() => checkAdmin())
 </script>
 
 <template>
@@ -62,7 +68,7 @@ function isCurrent(item) {
               <NuxtLink
                 :to="item.to"
                 :aria-current="isCurrent(item) ? 'page' : undefined"
-                class="relative flex items-center gap-2 px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:px-3"
+                class="relative flex items-center gap-2 whitespace-nowrap px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:px-3"
                 :class="isCurrent(item)
                   ? 'text-highlighted after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary lg:after:inset-x-3'
                   : 'text-muted hover:text-highlighted'"
@@ -83,9 +89,23 @@ function isCurrent(item) {
           <span
             v-if="user?.email"
             class="hidden max-w-56 truncate text-sm text-muted lg:block"
+            :class="showUsers ? 'lg:hidden xl:block' : ''"
           >
             {{ user.email }}
           </span>
+          <UButton
+            v-if="showUsers"
+            to="/usuarios"
+            icon="i-lucide-user-cog"
+            color="neutral"
+            :variant="route.path === '/usuarios' ? 'soft' : 'ghost'"
+            size="sm"
+            aria-label="Usuarios"
+            :aria-current="route.path === '/usuarios' ? 'page' : undefined"
+            :ui="{ label: 'hidden xl:inline' }"
+            label="Usuarios"
+            data-nav-users
+          />
           <LogoutButton
             class="hidden sm:inline-flex"
             size="sm"

@@ -7,6 +7,8 @@ const config = useRuntimeConfig()
 
 const status = computed(() => props.error?.status ?? props.error?.statusCode ?? 500)
 const isNotFound = computed(() => status.value === 404)
+// Página solo para la cuenta de administración principal (/usuarios).
+const isForbidden = computed(() => status.value === 403)
 const supabaseNotConfigured = computed(() => {
   const supabase = config.public.supabase
   return !supabase?.url || !supabase?.key
@@ -33,6 +35,7 @@ const authReason = computed(() => {
 
 const title = computed(() => {
   if (isNotFound.value) return 'Página no encontrada'
+  if (isForbidden.value) return 'No tienes acceso a esta página'
   if (supabaseNotConfigured.value) return 'Falta configurar la conexión con Supabase'
   if (authReason.value === 'connection') return 'No se ha podido comprobar el acceso'
   if (authReason.value === 'setup') return 'Falta preparar la base de datos'
@@ -41,6 +44,7 @@ const title = computed(() => {
 
 const description = computed(() => {
   if (isNotFound.value) return 'La dirección no existe o ha cambiado.'
+  if (isForbidden.value) return 'Solo la cuenta de administración principal puede gestionar usuarios.'
   if (supabaseNotConfigured.value) {
     return 'Define NUXT_PUBLIC_SUPABASE_URL y NUXT_PUBLIC_SUPABASE_KEY en el entorno (consulta SUPABASE_SETUP.md) y reinicia la aplicación.'
   }

@@ -12,6 +12,7 @@ Guía de configuración de Supabase: acceso privado y autorización (Fase 1, sec
 - Además, la cuenta debe estar en `public.profiles`. Si no lo está, solo puede ver `/acceso-denegado` (sección 7.4).
 - Botón **Cerrar sesión** en la cabecera. Cierra solo la sesión de ese dispositivo.
 - Proyecto de Supabase creado y variables configuradas en local.
+- **Gestión de usuarios (5 nov 2026), preparada en local** (sección 15): no necesita migración, pero sí dos variables privadas en el servidor y la configuración de Auth de la sección 15.2. No se ha probado contra el proyecto real.
 - **Decisión (5 nov 2026): este mismo proyecto es el de producción**, con sus datos tal como están (según la encargada, no hay que limpiar nada). No hay un proyecto aparte para pruebas: lo que se guarda desde la app en local queda en la base de datos real. El estado de las migraciones que figura abajo puede no estar al día.
 - **Fase 1, aplicada en el proyecto remoto:**
   - Migración `supabase/migrations/20261028095000_profiles_authorization.sql`: crea `public.profiles` (lista de cuentas autorizadas), `private.is_authorized()` y la RLS de `profiles`.
@@ -82,13 +83,16 @@ Copia `.env.example` como `.env` y rellena:
 | --- | --- | --- |
 | `NUXT_PUBLIC_SUPABASE_URL` | Botón **Connect** o **Project Settings → API** | `https://<ref>.supabase.co` |
 | `NUXT_PUBLIC_SUPABASE_KEY` | **Project Settings → API Keys** → *Publishable key* (`sb_publishable_…`) | Llega al navegador por diseño |
+| `NUXT_SUPABASE_SECRET_KEY` | **Project Settings → API Keys** → *Secret keys* (`sb_secret_…`) | **Solo servidor.** Solo para la gestión de usuarios (sección 15) |
+| `NUXT_PANET_ADMIN_USER_ID` | **Authentication → Users** → UUID de la cuenta de administración principal | **Solo servidor.** Sección 15 |
 
-- **Nunca** pongas la clave secreta (`sb_secret_…`) ni la `service_role` en `.env`, en el código ni en el entorno de despliegue. Esas claves saltan todas las políticas RLS, y la aplicación no las necesita.
-- El módulo leería automáticamente `SUPABASE_SECRET_KEY` o `SUPABASE_SERVICE_ROLE_KEY` si existieran (solo en el servidor). Por eso no deben definirse.
+- La clave secreta salta todas las políticas RLS. Solo la usan las rutas del servidor de la gestión de usuarios (`server/api/admin/…`), a través del módulo de Supabase. **Nunca** la pongas en una variable `NUXT_PUBLIC_…`, en el código ni en archivos versionados.
+- Usa solo `NUXT_SUPABASE_SECRET_KEY`. No definas también `SUPABASE_SECRET_KEY`, `SUPABASE_SERVICE_ROLE_KEY` ni `SUPABASE_SERVICE_KEY` (el módulo las leería igualmente).
+- Sin estas variables, el resto de la app funciona como hasta ahora. Sin `NUXT_PANET_ADMIN_USER_ID`, nadie ve «Usuarios»; sin la clave secreta, `/usuarios` avisa de que la gestión de usuarios no está configurada.
 - `.env` está en `.gitignore`. Comprueba con `git status` que no aparece antes de cada commit.
-- En el despliegue, define las mismas dos variables en el panel del hosting.
+- En el despliegue, define las mismas variables en el panel del hosting (sección 15.3).
 
-Con la autenticación por correo y contraseña no hace falta configurar *Redirect URLs*. En **Authentication → URL Configuration**, pon en *Site URL* la URL de producción. Las *Redirect URLs* solo harán falta si más adelante se añade la recuperación de contraseña.
+En **Authentication → URL Configuration**, pon en *Site URL* la URL de producción. Para las invitaciones hay que añadir además la página `/bienvenida` a las *Redirect URLs* (sección 15.2).
 
 ## 5. Aplicar la migración de autorización
 
@@ -1043,6 +1047,63 @@ El script crea trabajadoras de prueba y deshace todo al terminar: las trabajador
 
 Después, vuelve a ejecutar `staff_rls_checks.sql` (sección 9.4): debe seguir dando 66 `OK` + 1 `INFO`.
 
+## 15. Gestión de usuarios (`/usuarios`)
+
+La cuenta de administración principal puede invitar a otras personas por correo y quitarles el acceso desde la app. Las demás cuentas usan la app con normalidad, pero no pueden gestionar usuarios.
+
+**No hace falta ninguna migración.** Se reutilizan `public.profiles` (una fila = acceso) y `private.is_authorized()`. Las rutas del servidor escriben en `profiles` con la clave secreta (rol `service_role`, que Supabase crea con todos los privilegios sobre las tablas de `public`). Las cuentas siguen sin poder escribir en `profiles`: no hay ningún rol que modificar.
+
+### 15.1 Cómo funciona
+
+- **Cuenta de administración:** la que tiene el UUID de `NUXT_PANET_ADMIN_USER_ID`, y además debe estar autorizada (fila en `profiles`). Se comprueba en el servidor en cada operación. No depende de nada que una usuaria pueda cambiar.
+- **Invitar** (`POST /api/admin/users`):
+  - correo nuevo: `auth.admin.inviteUserByEmail`, con el enlace a `/bienvenida`, y una fila en `profiles`;
+  - cuenta invitada que no ha aceptado: se reenvía la invitación;
+  - cuenta que ya existía sin acceso (por ejemplo, revocada): se le devuelve el acceso sin correo y entra con su contraseña;
+  - cuenta que ya tiene acceso: se avisa y no se hace nada.
+- **Aceptar la invitación** (`/bienvenida`): la persona abre el enlace del correo, elige su contraseña (al menos 8 caracteres) y entra.
+- **Quitar el acceso** (`DELETE /api/admin/users/<id>`): se borra su fila de `profiles`. La cuenta de Auth se conserva. La cuenta de administración no puede quitarse el acceso a sí misma.
+- **Situación** de cada cuenta en la lista: «Invitación pendiente» mientras no ha confirmado el correo; después, «Activo».
+- Las rutas del servidor rechazan las peticiones sin sesión (401), las de cualquier otra cuenta (403) y las que modifican datos desde otro sitio web (403).
+
+### 15.2 Configuración en Supabase (panel)
+
+1. **Authentication → URL Configuration:**
+   - *Site URL*: la URL de producción;
+   - *Redirect URLs*: añade `https://<tu-dominio>/bienvenida` (y `http://localhost:3000/bienvenida` para probar en local).
+
+   Si falta, el enlace del correo llevará a la página de inicio en lugar de a `/bienvenida`, y la persona no podrá elegir su contraseña.
+2. **Correo (SMTP):** el servicio de correo incluido en Supabase solo envía a las direcciones del equipo del proyecto y con un límite muy bajo por hora. Para invitar a otras personas, configura un SMTP propio en **Authentication → Emails → SMTP Settings**.
+3. **Plantilla del correo de invitación** (**Authentication → Emails → Invite user**): por defecto está en inglés. Puedes traducirla, pero mantén el enlace `{{ .ConfirmationURL }}`.
+4. El registro público sigue desactivado (sección 2): las invitaciones funcionan igual.
+5. **Comprobación (solo lectura, SQL Editor):** debe devolver `true | true | true`.
+
+   ```sql
+   select has_table_privilege('service_role', 'public.profiles', 'SELECT'),
+          has_table_privilege('service_role', 'public.profiles', 'INSERT'),
+          has_table_privilege('service_role', 'public.profiles', 'DELETE');
+   ```
+
+### 15.3 Variables en el servidor (Netlify)
+
+En **Site configuration → Environment variables**, además de las dos públicas:
+
+| Variable | Valor | Finalidad |
+| --- | --- | --- |
+| `NUXT_SUPABASE_SECRET_KEY` | Clave secreta (`sb_secret_…`) | Invitar, listar cuentas y quitar el acceso desde el servidor |
+| `NUXT_PANET_ADMIN_USER_ID` | UUID de la cuenta de administración (**Authentication → Users**) | Identificar a la única cuenta que gestiona usuarios |
+
+- Márcalas como secretas si el panel lo permite y **no** les pongas el prefijo `NUXT_PUBLIC_`.
+- Después de cambiarlas, vuelve a desplegar.
+- Para cambiar la cuenta de administración, cambia el UUID y vuelve a desplegar.
+
+### 15.4 Comprobaciones en el proyecto real
+
+1. Con la cuenta de administración: aparece «Usuarios» en la cabecera y se ve la lista.
+2. Invita a una dirección tuya: llega el correo, el enlace abre `/bienvenida`, eliges la contraseña y entras.
+3. Con esa cuenta: no aparece «Usuarios», y `/usuarios` muestra «No tienes acceso a esta página».
+4. Quítale el acceso: al recargar, va a `/acceso-denegado`.
+
 ## Limitaciones conocidas
 
 - La cookie de sesión dura 8 horas desde la última renovación (valor por defecto del módulo). Si la app no se usa durante más tiempo, habrá que volver a iniciar sesión.
@@ -1069,4 +1130,5 @@ Después, vuelve a ejecutar `staff_rls_checks.sql` (sección 9.4): debe seguir d
   - **Fase 3, Bloque 7:** la migración de `shop_settings` y `shop_settings_checks.sql` (33 `OK` + 2 `INFO`) se han probado solo en local. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 6:** la migración del calendario, `supplier_schedule_checks.sql` (30 filas `OK`) y el script de carga de la hoja se han probado solo en local (PostgreSQL 16 y PostgREST 13). Con la migración aplicada, `orders_rls_checks.sql` y `supplier_products_rls_checks.sql` siguen dando el resultado esperado. **No** se han ejecutado en el proyecto remoto.
   - **Fase 3, Bloque 4:** la migración de productos y `supplier_products_rls_checks.sql` se han probado solo en local (57 filas: 56 `OK` + 1 `INFO`). El script detecta con `FALLO` ocho versiones de la migración con errores introducidos a propósito (privilegios de `anon`, `DELETE` concedido, `UPDATE` de todas las columnas, índice no único o sin proveedor, cantidad sin rango, política abierta y RLS desactivado). **No** se han ejecutado en el proyecto remoto: su seguridad solo se puede dar por validada después de las secciones 11.2 y 11.4.
-- **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total, así que nunca deben llegar a la app ni a archivos versionados.
+- **`service_role` y la clave secreta:** saltan RLS por diseño. Cualquier proceso que las use tiene acceso total. Solo las usan las rutas del servidor de la gestión de usuarios (sección 15): nunca deben llegar al navegador ni a archivos versionados.
+- **Revocar el acceso** (sección 15): la RLS deja de darle datos en su siguiente petición. Si tenía la app abierta, sigue viendo la interfaz (sin datos) hasta que recarga la página o vuelve a entrar, y entonces va a `/acceso-denegado`.

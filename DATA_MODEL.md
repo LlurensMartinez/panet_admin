@@ -25,7 +25,9 @@ Lista explícita de cuentas autorizadas: una fila por cada cuenta de Supabase Au
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`. Se actualiza con el trigger `private.set_updated_at()`.
 
-No guarda contraseñas, correos ni secretos: las credenciales las gestiona Supabase Auth. Las filas se añaden y se retiran a mano desde el panel de Supabase; los clientes solo pueden leer su propia fila.
+No guarda contraseñas, correos, roles ni secretos: las credenciales las gestiona Supabase Auth. Las filas se añaden y se retiran desde **Usuarios** (`/usuarios`), a través de las rutas del servidor con la clave secreta, o a mano desde el panel de Supabase. Los clientes solo pueden leer su propia fila.
+
+La cuenta de administración principal no se marca en la base de datos: la identifica el servidor por su UUID (`NUXT_PANET_ADMIN_USER_ID`). Así ninguna cuenta puede convertirse en administración modificando datos. Sin cambios de esquema.
 
 Implementada en `supabase/migrations/20261028095000_profiles_authorization.sql`.
 
@@ -303,7 +305,7 @@ Opción A: **`public.profiles` es la lista de cuentas autorizadas**. Estar auten
   - Tiene RLS activo y una única política: `profiles_select_own` (`SELECT`, cada cuenta solo ve su propia fila).
   - `authenticated` solo tiene el privilegio `SELECT` y `anon` no tiene ninguno.
   - No hay políticas de `INSERT`, `UPDATE` ni `DELETE`, así que ningún cliente puede añadirse, modificarse ni retirarse.
-- **Altas y bajas de autorización:** se hacen a mano desde el SQL Editor de Supabase (rol `postgres`). Ver `SUPABASE_SETUP.md`.
+- **Altas y bajas de autorización:** desde **Usuarios** (`/usuarios`), solo para la cuenta de administración principal. Las hacen las rutas del servidor con la clave secreta (rol `service_role`); el navegador nunca la ve. También se pueden hacer a mano desde el SQL Editor (rol `postgres`). Ver `SUPABASE_SETUP.md`, sección 15.
 
 ### Permisos de las tablas de la Fase 2
 

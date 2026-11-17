@@ -4,6 +4,9 @@
 //
 // Flujo:
 //   /login          → pública (con sesión válida, se envía a la app).
+//   /bienvenida     → pública: la persona invitada llega con la sesión en el
+//                     enlace (#access_token…, que el servidor no ve) y elige
+//                     su contraseña. Ahí no se comprueba la autorización.
 //   sin sesión      → /login?redirect=…
 //   con sesión      → se comprueba si la cuenta está en public.profiles:
 //     autorizada        → se permite (y /acceso-denegado se envía a /).
@@ -12,7 +15,7 @@
 //     error de conexión → página de error 503 con «Reintentar» (sin redirigir).
 //     falta migración   → página de error 503 con instrucciones.
 
-const PUBLIC_PATHS = ['/login']
+const PUBLIC_PATHS = ['/login', INVITE_ACCEPT_PATH]
 
 export default defineNuxtRouteMiddleware(async (to) => {
   // En la primera carga, el servidor ya ha ejecutado este middleware y ha
@@ -29,6 +32,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const user = useSupabaseUser()
   const supabase = useSupabaseClient()
   const authorization = useAuthorization()
+
+  if (to.path === INVITE_ACCEPT_PATH) return
 
   if (PUBLIC_PATHS.includes(to.path)) {
     // Tras una sesión caducada se muestra el formulario aunque quede algún

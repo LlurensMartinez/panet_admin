@@ -18,8 +18,8 @@ Principios:
 
 ## 2. Usuarios y acceso
 
-- En el MVP solo la encargada inicia sesión.
-- Las trabajadoras no tienen cuentas ni acceden a la aplicación.
+- La encargada es la cuenta de **administración principal**. Desde el 5 de noviembre de 2026 puede invitar a otras personas por correo y quitarles el acceso desde **Usuarios** (`/usuarios`). Las cuentas invitadas usan todas las funciones, pero no gestionan usuarios. Solo hay esos dos tipos de cuenta, sin roles ni permisos configurables.
+- Las trabajadoras no tienen cuentas, salvo que la encargada invite a alguien expresamente.
 - La responsable de zona no tiene cuenta: la encargada comparte los resúmenes necesarios.
 - La aplicación gestiona un único establecimiento.
 - El acceso a los datos debe estar protegido en el servidor/base de datos, no solo en la interfaz.
